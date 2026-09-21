@@ -4,10 +4,12 @@ import time
 import unicodedata
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from sqlglot import exp, parse_one
+from sqlglot.errors import ParseError, TokenError
 
 from app.core.errors import AppError
 from app.text2sql.answer import AnswerBuilder
@@ -56,6 +58,90 @@ class AnswerGenerationPayload(BaseModel):
     chart: dict[str, Any]
     follow_up_questions: list[str] = Field(
         default_factory=list, alias="followUpQuestions", max_length=3
+    )
+
+
+PayloadT = TypeVar("PayloadT", bound=BaseModel)
+
+
+def _deterministic_clarification_slots(
+    question: str, context: list[PromptContextItem]
+) -> tuple[str, ...]:
+    normalized = unicodedata.normalize("NFKC", question).strip().lower()
+    normalized = re.sub(r"[?？。！!]+$", "", normalized)
+    if re.fullmatch(
+        r"(?:今年|本年)(?:的)?(?:销售额|收入|回款|应收)(?:怎么样|如何|情况如何|什么情况)",
+        normalized,
+    ):
+        return ("dimension", "comparison_basis")
+    if re.fullmatch(r"(?:这个月|本月)(?:的)?数据(?:呢|怎么样|如何)?", normalized):
+        history = " ".join(str(item["content"]) for item in context).lower()
+        if not any(
+            marker in history
+            for marker in ("收入", "销售额", "回款", "应收", "合同", "项目", "风险", "目标")
+        ):
+            return ("metric", "dimension")
+    return ()
+
+
+def _normalize_query_semantics(question: str, sql: str | None) -> str | None:
+    if sql is None:
+        return None
+    normalized = unicodedata.normalize("NFKC", question).strip().lower()
+    normalize_month = any(marker in normalized for marker in ("各月", "每月", "月度"))
+    normalize_top_one = (
+        not any(marker in normalized for marker in ("每", "各", "分别"))
+        and re.search(r"(?:前\s*\d+|top\s*\d+|\d+\s*(?:个|条|名|项))", normalized) is None
+        and re.search(
+            r"(?:最高|最低|最大|最小)(?:的)?(?:月份|月|经营单元|客户|合同|项目|行业|产品线|区域|地区|省份)",
+            normalized,
+        )
+        is not None
+    )
+    if not (normalize_month or normalize_top_one):
+        return sql
+    try:
+        statement = parse_one(sql, read="postgres")
+    except (ParseError, TokenError):
+        return sql
+    if not isinstance(statement, exp.Query):
+        return sql
+    if normalize_month:
+        statement = statement.transform(_normalize_month_bucket)
+    if normalize_top_one:
+        limit = statement.args.get("limit")
+        if limit is None:
+            statement.set("limit", exp.Limit(expression=exp.Literal.number(1)))
+        elif isinstance(limit, exp.Limit):
+            expression = limit.expression
+            if (
+                isinstance(expression, exp.Literal)
+                and expression.is_int
+                and int(expression.this) > 1
+            ):
+                limit.set("expression", exp.Literal.number(1))
+    return statement.sql(dialect="postgres")
+
+
+def _normalize_month_bucket(node: exp.Expression) -> exp.Expression:
+    source: exp.Expression | None = None
+    if isinstance(node, exp.Cast) and isinstance(node.this, exp.Extract):
+        unit = str(node.this.this).lower()
+        if unit == "month":
+            source = node.this.expression
+    elif isinstance(node, exp.Extract) and str(node.this).lower() == "month":
+        source = node.expression
+    elif isinstance(node, exp.TimeToStr):
+        date_format = node.args.get("format")
+        if isinstance(date_format, exp.Literal) and str(date_format.this) in ("%Y-%m", "YYYY-MM"):
+            source = node.this
+    if source is None:
+        return node
+    return exp.Cast(
+        this=exp.TimestampTrunc(  # type: ignore[no-untyped-call]
+            this=source.copy(), unit=exp.Var(this="MONTH")
+        ),
+        to=exp.DataType.build("date"),
     )
 
 
@@ -113,7 +199,6 @@ class FakeModelAdapter(ModelAdapter):
     def classify_intent(
         self, question: str, context: list[PromptContextItem]
     ) -> IntentClassification:
-        del context
         normalized = self._normalized_text(question)
         lowered = normalized.lower()
         intent: Intent = "data_query"
@@ -176,6 +261,11 @@ class FakeModelAdapter(ModelAdapter):
             intent, reason_code = "chat", "SIMPLE_ARITHMETIC"
         elif any(marker in lowered for marker in ("天气", "新闻", "写诗", "翻译")):
             intent, reason_code = "out_of_scope", "OUT_OF_SCOPE"
+        clarification_slots = _deterministic_clarification_slots(question, context)
+        if intent != "unsafe" and clarification_slots:
+            intent = "clarification"
+            missing_slots = clarification_slots
+            reason_code = "MISSING_ANALYSIS_SCOPE"
         return IntentClassification(
             intent,
             normalized,
@@ -423,9 +513,8 @@ class OpenAICompatibleAdapter(ModelAdapter):
     def classify_intent(
         self, question: str, context: list[PromptContextItem]
     ) -> IntentClassification:
-        content, usage = self._completion(
-            self._intent_prompt(question, context), 0, max_output_tokens=768
-        )
+        prompt = self._intent_prompt(question, context)
+        content, usage = self._completion(prompt, 0, max_output_tokens=768)
         if not content.strip():
             fallback = FakeModelAdapter().classify_intent(question, context)
             return IntentClassification(
@@ -440,12 +529,40 @@ class OpenAICompatibleAdapter(ModelAdapter):
             )
         try:
             parsed = IntentClassificationPayload.model_validate_json(content)
-        except (ValidationError, ValueError) as exc:
-            raise AppError("MODEL_INVALID_RESPONSE", "模型返回的意图结构无效", 502) from exc
+        except (ValidationError, ValueError):
+            transport_retries = self.last_retry_count + 1
+            repair_prompt = StructuredPrompt(
+                system=(
+                    f"{prompt.system}\nThe previous response did not match outputSchema. "
+                    "Return one complete JSON object with exactly the required fields and no prose."
+                ),
+                payload=prompt.payload,
+            )
+            repaired_content, repaired_usage = self._completion(
+                repair_prompt, 0, max_output_tokens=768
+            )
+            transport_retries += self.last_retry_count
+            try:
+                parsed = IntentClassificationPayload.model_validate_json(repaired_content)
+            except (ValidationError, ValueError) as exc:
+                self.last_retry_count = transport_retries
+                raise AppError("MODEL_INVALID_RESPONSE", "模型返回的意图结构无效", 502) from exc
+            usage = {
+                "prompt_tokens": self._token_count(usage, "prompt_tokens")
+                + self._token_count(repaired_usage, "prompt_tokens"),
+                "completion_tokens": self._token_count(usage, "completion_tokens")
+                + self._token_count(repaired_usage, "completion_tokens"),
+            }
+            self.last_retry_count = transport_retries
         intent = parsed.intent
         missing_slots = tuple(parsed.missing_slots)
         reason_code = parsed.reason_code
-        if intent == "clarification" and self._is_complete_snapshot_ranking(question):
+        clarification_slots = _deterministic_clarification_slots(question, context)
+        if intent != "unsafe" and clarification_slots:
+            intent = "clarification"
+            missing_slots = clarification_slots
+            reason_code = "MISSING_ANALYSIS_SCOPE"
+        elif intent == "clarification" and self._is_complete_snapshot_ranking(question):
             intent = "data_query"
             missing_slots = ()
             reason_code = "COMPLETE_SNAPSHOT_RANKING"
@@ -463,21 +580,22 @@ class OpenAICompatibleAdapter(ModelAdapter):
     def generate_sql(
         self, question: str, schema: SchemaContext, context: list[PromptContextItem]
     ) -> ModelSqlOutput:
-        content, usage = self._completion(self._sql_prompt(question, schema, context), 0)
-        try:
-            parsed = SqlGenerationPayload.model_validate_json(content)
-        except (ValidationError, ValueError) as exc:
-            raise AppError("MODEL_INVALID_RESPONSE", "模型返回的 SQL 结构无效", 502) from exc
+        parsed, usage = self._structured_completion(
+            self._sql_prompt(question, schema, context),
+            SqlGenerationPayload,
+            "模型返回的 SQL 结构无效",
+        )
         if not set(parsed.selected_objects).issubset(schema.objects):
             raise AppError("MODEL_INVALID_RESPONSE", "模型返回了未召回的数据对象", 502)
         if parsed.sql is not None and parsed.intent not in ("data_query", "correction"):
             raise AppError("MODEL_INVALID_RESPONSE", "模型 SQL 意图与输出不一致", 502)
         if parsed.sql is None and parsed.selected_objects:
             raise AppError("MODEL_INVALID_RESPONSE", "空 SQL 不得声明数据对象", 502)
+        normalized_sql = _normalize_query_semantics(question, parsed.sql)
         return ModelSqlOutput(
             parsed.intent,
             tuple(parsed.assumptions),
-            parsed.sql,
+            normalized_sql,
             tuple(parsed.selected_objects),
             self.model_name,
             self._token_count(usage, "prompt_tokens"),
@@ -487,11 +605,11 @@ class OpenAICompatibleAdapter(ModelAdapter):
     def generate_answer(
         self, question: str, result: QueryResult, generate_chart: bool
     ) -> ModelAnswerOutput:
-        content, usage = self._completion(self._answer_prompt(question, result, generate_chart), 0)
-        try:
-            parsed = AnswerGenerationPayload.model_validate_json(content)
-        except (ValidationError, ValueError) as exc:
-            raise AppError("MODEL_INVALID_RESPONSE", "模型返回的答案结构无效", 502) from exc
+        parsed, usage = self._structured_completion(
+            self._answer_prompt(question, result, generate_chart),
+            AnswerGenerationPayload,
+            "模型返回的答案结构无效",
+        )
         return ModelAnswerOutput(
             parsed.answer,
             parsed.chart,
@@ -504,13 +622,11 @@ class OpenAICompatibleAdapter(ModelAdapter):
     def generate_non_data_answer(
         self, question: str, intent: Intent, context: list[PromptContextItem]
     ) -> ModelAnswerOutput:
-        content, usage = self._completion(
-            self._non_data_answer_prompt(question, intent, context), 0
+        parsed, usage = self._structured_completion(
+            self._non_data_answer_prompt(question, intent, context),
+            AnswerGenerationPayload,
+            "模型返回的对话答案结构无效",
         )
-        try:
-            parsed = AnswerGenerationPayload.model_validate_json(content)
-        except (ValidationError, ValueError) as exc:
-            raise AppError("MODEL_INVALID_RESPONSE", "模型返回的对话答案结构无效", 502) from exc
         if parsed.chart.get("type") != "none":
             raise AppError("MODEL_INVALID_RESPONSE", "非问数回答不得生成图表", 502)
         return ModelAnswerOutput(
@@ -521,6 +637,54 @@ class OpenAICompatibleAdapter(ModelAdapter):
             self._token_count(usage, "prompt_tokens"),
             self._token_count(usage, "completion_tokens"),
         )
+
+    def _structured_completion(
+        self,
+        prompt: StructuredPrompt,
+        payload_type: type[PayloadT],
+        error_message: str,
+        max_output_tokens: int | None = None,
+    ) -> tuple[PayloadT, dict[str, Any]]:
+        usage_total = {"prompt_tokens": 0, "completion_tokens": 0}
+        total_retries = 0
+        last_error: Exception | None = None
+        for structured_attempt in range(2):
+            active_prompt = prompt
+            if structured_attempt:
+                active_prompt = StructuredPrompt(
+                    system=(
+                        f"{prompt.system}\nThe previous response did not match outputSchema. "
+                        "Return one complete JSON object with exactly the required fields and no prose."
+                    ),
+                    payload=prompt.payload,
+                )
+                total_retries += 1
+            try:
+                content, usage = self._completion(
+                    active_prompt, 0, max_output_tokens=max_output_tokens
+                )
+            except AppError as exc:
+                total_retries += self.last_retry_count
+                last_error = exc
+                if exc.code == "MODEL_INVALID_RESPONSE" and structured_attempt == 0:
+                    continue
+                self.last_retry_count = total_retries
+                raise
+            total_retries += self.last_retry_count
+            usage_total["prompt_tokens"] += self._token_count(usage, "prompt_tokens")
+            usage_total["completion_tokens"] += self._token_count(usage, "completion_tokens")
+            if content.strip():
+                try:
+                    parsed = payload_type.model_validate_json(content)
+                except (ValidationError, ValueError) as exc:
+                    last_error = exc
+                else:
+                    self.last_retry_count = total_retries
+                    return parsed, usage_total
+            else:
+                last_error = ValueError("empty structured response")
+        self.last_retry_count = total_retries
+        raise AppError("MODEL_INVALID_RESPONSE", error_message, 502) from last_error
 
     def _completion(
         self,
@@ -704,6 +868,7 @@ class OpenAICompatibleAdapter(ModelAdapter):
             ],
             "rules": [
                 "Use clarification when a data request cannot be answered without guessing a metric, dimension, entity, or time range.",
+                "Vague status questions such as how this year's sales are doing require a comparison basis or analysis dimension; generic requests for this month's data require a metric and dimension.",
                 "Do not require a time range for snapshot metrics such as current receivables or current project risk.",
                 "A request with a snapshot metric, entity, and explicit Top N/ranking direction is a complete data_query, not clarification.",
                 "Classify greetings, thanks, simple arithmetic, user-provided conversational facts/variables, and questions about recent conversation as chat.",
@@ -800,6 +965,11 @@ class OpenAICompatibleAdapter(ModelAdapter):
                 "schema-qualified allowlisted objects only",
                 "use only exact column names listed in objects; never invent or translate names",
                 "respect listed data types and enum literals exactly",
+                "Normalize natural-language category suffixes to listed enum literals, for example 华东地区 to 华东 and 金融行业 to 金融.",
+                "Project or opportunity counts must use mart.v_pipeline_risk and count distinct project_id; never substitute contract_id or a sales contract count.",
+                "For monthly grouped results, return DATE_TRUNC('month', the_date_column)::date; do not return only a month number or a formatted month string.",
+                "A singular superlative without an explicit N, such as the highest month, must return LIMIT 1; preserve an explicit Top N exactly.",
+                "An entity name that may have no matching rows is still answerable: query the exact literal through the allowlisted semantic view and let the database return an empty result.",
                 "no SELECT star",
                 "limit results",
                 "return null SQL when the request cannot be satisfied without leaving the allowlist",

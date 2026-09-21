@@ -19,6 +19,7 @@ ALLOWED_FUNCTIONS = {
     "least",
     "extract",
     "date_trunc",
+    "timestamp_trunc",
     "lag",
     "lead",
     "row_number",
@@ -29,6 +30,37 @@ ALLOWED_FUNCTIONS = {
     "case",
     "if",
     "cast",
+}
+ENUM_VALUE_ALIASES = {
+    "region": {
+        "东北地区": "东北",
+        "华东地区": "华东",
+        "华中地区": "华中",
+        "华北地区": "华北",
+        "华南地区": "华南",
+        "西北地区": "西北",
+        "西南地区": "西南",
+    },
+    "industry_major_name": {
+        "互联网行业": "互联网",
+        "交通行业": "交通",
+        "医疗行业": "医疗",
+        "教育行业": "教育",
+        "数字政府行业": "数字政府",
+        "智能制造行业": "智能制造",
+        "能源行业": "能源",
+        "金融行业": "金融",
+    },
+    "industry_name": {
+        "互联网行业": "互联网",
+        "交通行业": "交通",
+        "医疗行业": "医疗",
+        "教育行业": "教育",
+        "数字政府行业": "数字政府",
+        "智能制造行业": "智能制造",
+        "能源行业": "能源",
+        "金融行业": "金融",
+    },
 }
 FORBIDDEN_TYPES = (
     exp.Insert,
@@ -127,6 +159,7 @@ class SqlValidator:
             raise SqlValidationError("仅允许 SELECT 或只读 CTE")
         if any(isinstance(node, FORBIDDEN_TYPES) for node in statement.walk()):
             raise SqlValidationError("查询包含写入或管理语句")
+        self._normalize_enum_literals(statement)
         with_clause = statement.args.get("with")
         if isinstance(with_clause, exp.With) and with_clause.args.get("recursive"):
             raise SqlValidationError("禁止递归 CTE")
@@ -187,6 +220,28 @@ class SqlValidator:
                 raise SqlValidationError("禁止无连接条件的多表查询")
         self._apply_limit(statement)
         return ValidatedSql(sql, statement.sql(dialect="postgres"), tuple(sorted(objects)))
+
+    @staticmethod
+    def _normalize_enum_literals(statement: exp.Query) -> None:
+        def normalize(column: exp.Column, literal: exp.Literal) -> None:
+            if not literal.is_string:
+                return
+            canonical = ENUM_VALUE_ALIASES.get(column.name.lower(), {}).get(str(literal.this))
+            if canonical is not None:
+                literal.set("this", canonical)
+
+        for equality in statement.find_all(exp.EQ):
+            left, right = equality.this, equality.expression
+            if isinstance(left, exp.Column) and isinstance(right, exp.Literal):
+                normalize(left, right)
+            elif isinstance(right, exp.Column) and isinstance(left, exp.Literal):
+                normalize(right, left)
+        for membership in statement.find_all(exp.In):
+            if not isinstance(membership.this, exp.Column):
+                continue
+            for literal in membership.expressions:
+                if isinstance(literal, exp.Literal):
+                    normalize(membership.this, literal)
 
     @staticmethod
     def _derived_sources(statement: exp.Query) -> dict[str, set[str]]:

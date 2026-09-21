@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import time
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,7 @@ def main() -> None:
         }
         rows: list[dict[str, Any]] = []
         reciprocal_rank = 0.0
+        ndcg_at_5 = 0.0
         started = time.perf_counter()
         for case in cases:
             case_started = time.perf_counter()
@@ -40,6 +42,7 @@ def main() -> None:
                 (index for index, key in enumerate(retrieved, start=1) if key in expected), None
             )
             reciprocal_rank += 0.0 if rank is None else 1.0 / rank
+            ndcg_at_5 += 0.0 if rank is None else 1.0 / math.log2(rank + 1)
             rows.append(
                 {
                     "id": case["id"],
@@ -54,12 +57,17 @@ def main() -> None:
         document_count = db.scalar(
             select(func.count()).select_from(RagDocument).where(RagDocument.enabled.is_(True))
         )
-    hits = sum(1 for item in rows if item["hit"])
+    hits_at_1 = sum(1 for item in rows if item["rank"] == 1)
+    hits_at_3 = sum(1 for item in rows if item["rank"] is not None and item["rank"] <= 3)
+    hits_at_5 = sum(1 for item in rows if item["hit"])
     report = {
         "caseCount": len(rows),
-        "hits": hits,
-        "recallAt5": hits / len(rows),
+        "hits": hits_at_5,
+        "recallAt1": hits_at_1 / len(rows),
+        "recallAt3": hits_at_3 / len(rows),
+        "recallAt5": hits_at_5 / len(rows),
         "mrr": reciprocal_rank / len(rows),
+        "ndcgAt5": ndcg_at_5 / len(rows),
         "documentCount": document_count,
         "embeddingModel": provider.model_name,
         "embeddingDimension": provider.dimension,
@@ -76,7 +84,7 @@ def main() -> None:
             indent=2,
         )
     )
-    if hits != len(rows):
+    if hits_at_5 != len(rows):
         raise SystemExit(1)
 
 

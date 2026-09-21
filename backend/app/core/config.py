@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 
 class Settings(BaseSettings):
@@ -68,7 +69,9 @@ class Settings(BaseSettings):
 
     @property
     def checkpoint_database_url(self) -> str:
-        return self.database_url.replace("postgresql+psycopg://", "postgresql://", 1)
+        url = make_url(self.database_url).set(drivername="postgresql")
+        url = url.update_query_dict({"connect_timeout": str(self.database_connect_timeout_seconds)})
+        return url.render_as_string(hide_password=False)
 
 
 @lru_cache

@@ -116,6 +116,7 @@ class RagIndexer:
             or existing[item.stable_key].content_hash != content_hash(item)
             or existing[item.stable_key].embedding_model != self.provider.model_name
             or existing[item.stable_key].embedding_dimension != self.provider.dimension
+            or not existing[item.stable_key].enabled
         ]
         vectors = self.provider.encode([item.content for item in changed]) if changed else []
         inserted = updated = 0

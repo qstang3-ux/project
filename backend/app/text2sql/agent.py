@@ -534,13 +534,27 @@ class LangGraphQueryRunner:
     def summarize_result(self, state: AgentState) -> dict[str, Any]:
         self._enter_node(state, "summarize_result")
         result = self._query_result(state)
-        output = self._call_model(
-            "answer_generation",
-            self._effect_key("model:answer_generation"),
-            lambda: self.adapter.generate_answer(
-                state["question"], result, state["generate_chart"]
-            ),
-        )
+        output: ModelAnswerOutput | None = None
+        for attempt in range(2):
+            output = self._call_model(
+                "answer_generation",
+                self._effect_key("model:answer_generation", attempt),
+                lambda: self.adapter.generate_answer(
+                    state["question"], result, state["generate_chart"]
+                ),
+            )
+            try:
+                AnswerValidator().validate(
+                    output, state["question"], result, state["generate_chart"]
+                )
+            except AppError as exc:
+                self._mark_last_model_call_invalid()
+                if exc.code == "MODEL_INVALID_RESPONSE" and attempt == 0:
+                    continue
+                raise
+            break
+        if output is None:
+            raise AppError("MODEL_INVALID_RESPONSE", "模型未生成答案", 502)
         return self._node_update(state, "summarize_result", answer_output=asdict(output))
 
     def verify_answer(self, state: AgentState) -> dict[str, Any]:

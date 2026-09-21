@@ -12,6 +12,7 @@ from app.schemas.admin import ModelConnectionTestRequest
 from app.services.admin_service import ModelConfigService
 from app.services.query_service import QueryService
 from app.text2sql.adapters import OpenAICompatibleAdapter
+from app.text2sql.agent import LangGraphQueryRunner
 from app.text2sql.answer import AnswerValidator
 from app.text2sql.types import (
     ModelAnswerOutput,
@@ -216,6 +217,31 @@ def test_snapshot_ranking_fallback_never_overrides_unsafe_intent(
     assert result.intent == "unsafe"
 
 
+@pytest.mark.parametrize("question", ["今年销售额怎么样", "这个月的数据呢"])
+def test_vague_analysis_scope_is_deterministically_clarified(
+    monkeypatch: pytest.MonkeyPatch, question: str
+) -> None:
+    payload = {
+        "intent": "data_query",
+        "normalizedQuestion": question,
+        "missingSlots": [],
+        "confidence": 0.9,
+        "reasonCode": "DATA_QUERY",
+    }
+    monkeypatch.setattr(
+        httpx,
+        "post",
+        lambda *args, **kwargs: chat_response(200, json.dumps(payload, ensure_ascii=False)),
+    )
+    adapter = OpenAICompatibleAdapter("https://model.example/v1", "secret", "model", 10)
+
+    result = adapter.classify_intent(question, [])
+
+    assert result.intent == "clarification"
+    assert result.missing_slots
+    assert result.reason_code == "MISSING_ANALYSIS_SCOPE"
+
+
 @pytest.mark.parametrize(
     ("question", "expected"),
     [
@@ -337,6 +363,105 @@ def test_unknown_selected_object_is_rejected(monkeypatch: pytest.MonkeyPatch) ->
     with pytest.raises(AppError) as exc_info:
         adapter.generate_sql("配置", SchemaContext(("mart.v_sales_performance",), {}), [])
     assert exc_info.value.code == "MODEL_INVALID_RESPONSE"
+
+
+def test_invalid_structured_sql_response_is_retried_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def fake_post(*args: object, **kwargs: object) -> httpx.Response:
+        nonlocal calls
+        del args, kwargs
+        calls += 1
+        content = "not-json" if calls == 1 else json.dumps(SQL_PAYLOAD)
+        return chat_response(200, content)
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    adapter = OpenAICompatibleAdapter("https://model.example/v1", "secret", "model", 10)
+
+    output = adapter.generate_sql("合同", SchemaContext(("mart.v_sales_performance",), {}), [])
+
+    assert output.sql is not None
+    assert calls == 2
+    assert adapter.last_retry_count == 1
+
+
+@pytest.mark.parametrize(
+    ("question", "model_limit", "expected_limit"),
+    [
+        ("2026年收入最高的月份", 5, 1),
+        ("2026年收入最高的3个月份", 3, 3),
+    ],
+)
+def test_singular_superlative_limit_is_normalized_without_changing_explicit_top_n(
+    monkeypatch: pytest.MonkeyPatch,
+    question: str,
+    model_limit: int,
+    expected_limit: int,
+) -> None:
+    payload = {
+        **SQL_PAYLOAD,
+        "sql": (
+            "SELECT business_month, sum(revenue_amount) AS revenue "
+            "FROM mart.v_sales_performance GROUP BY business_month "
+            f"ORDER BY revenue DESC LIMIT {model_limit}"
+        ),
+    }
+    monkeypatch.setattr(
+        httpx,
+        "post",
+        lambda *args, **kwargs: chat_response(200, json.dumps(payload)),
+    )
+    adapter = OpenAICompatibleAdapter("https://model.example/v1", "secret", "model", 10)
+
+    output = adapter.generate_sql(question, SchemaContext(("mart.v_sales_performance",), {}), [])
+
+    assert output.sql is not None
+    assert f"LIMIT {expected_limit}" in output.sql
+
+
+@pytest.mark.parametrize(
+    "model_sql",
+    [
+        (
+            "SELECT EXTRACT(MONTH FROM expected_landing_date)::int AS month, "
+            "COUNT(DISTINCT project_id) AS project_count FROM mart.v_pipeline_risk "
+            "GROUP BY 1 ORDER BY 1"
+        ),
+        (
+            "SELECT to_char(expected_landing_date, 'YYYY-MM') AS landing_month, "
+            "COUNT(DISTINCT project_id) AS project_count FROM mart.v_pipeline_risk "
+            "GROUP BY to_char(expected_landing_date, 'YYYY-MM') ORDER BY landing_month"
+        ),
+    ],
+)
+def test_monthly_bucket_is_normalized_to_month_start_date_before_validation(
+    monkeypatch: pytest.MonkeyPatch, model_sql: str
+) -> None:
+    payload = {
+        **SQL_PAYLOAD,
+        "sql": model_sql,
+        "selectedObjects": ["mart.v_pipeline_risk"],
+    }
+    monkeypatch.setattr(
+        httpx,
+        "post",
+        lambda *args, **kwargs: chat_response(200, json.dumps(payload)),
+    )
+    adapter = OpenAICompatibleAdapter("https://model.example/v1", "secret", "model", 10)
+
+    output = adapter.generate_sql(
+        "2026年各月预计落地项目数量",
+        SchemaContext(("mart.v_pipeline_risk",), {}),
+        [],
+    )
+
+    assert output.sql is not None
+    assert "DATE_TRUNC('MONTH', expected_landing_date)" in output.sql
+    assert "TO_CHAR" not in output.sql
+    assert "EXTRACT" not in output.sql
+    SqlValidator().validate(output.sql, {"mart.v_pipeline_risk"})
 
 
 def test_responses_protocol_uses_responses_endpoint_and_usage(
@@ -540,6 +665,48 @@ def test_answer_output_validation_rejects_hallucinations(output: ModelAnswerOutp
     with pytest.raises(AppError) as exc_info:
         AnswerValidator().validate(output, "收入", result, True)
     assert exc_info.value.code == "MODEL_INVALID_RESPONSE"
+
+
+def test_answer_semantic_validation_retries_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    result = QueryResult(
+        columns=[{"key": "收入额", "label": "收入额", "dataType": "decimal"}],
+        rows=[{"收入额": 100}],
+        row_count=1,
+        truncated=False,
+        response_bytes=10,
+    )
+    outputs = iter(
+        [
+            ModelAnswerOutput("收入额为999。", {"type": "none"}, [], "model"),
+            ModelAnswerOutput("收入额为100。", {"type": "none"}, [], "model"),
+        ]
+    )
+
+    class AnswerAdapter:
+        def generate_answer(
+            self, question: str, query_result: QueryResult, generate_chart: bool
+        ) -> ModelAnswerOutput:
+            del question, query_result, generate_chart
+            return next(outputs)
+
+    runner = object.__new__(LangGraphQueryRunner)
+    runner.adapter = cast(Any, AnswerAdapter())
+    invalid_calls: list[bool] = []
+    monkeypatch.setattr(runner, "_enter_node", lambda state, node: None)
+    monkeypatch.setattr(runner, "_query_result", lambda state: result)
+    monkeypatch.setattr(runner, "_effect_key", lambda name, attempt=0: f"{name}:{attempt}")
+    monkeypatch.setattr(runner, "_call_model", lambda purpose, key, call: call())
+    monkeypatch.setattr(runner, "_mark_last_model_call_invalid", lambda: invalid_calls.append(True))
+    monkeypatch.setattr(
+        runner,
+        "_node_update",
+        lambda state, node, **updates: updates,
+    )
+
+    update = runner.summarize_result(cast(Any, {"question": "收入额", "generate_chart": False}))
+
+    assert update["answer_output"]["answer"] == "收入额为100。"
+    assert invalid_calls == [True]
 
 
 def test_answer_validator_treats_iso_date_parts_as_positive_numbers() -> None:

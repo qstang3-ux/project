@@ -2,8 +2,10 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.engine import make_url
 
 from app.api.router import _execution_event_data
+from app.core.config import Settings
 from app.main import _warm_rag_embedding, app
 from app.text2sql.rag import BgeEmbeddingProvider
 
@@ -76,3 +78,20 @@ def test_rag_embedding_warmup_loads_and_encodes_once(monkeypatch: pytest.MonkeyP
     _warm_rag_embedding()
 
     assert encoded == [["经管之星检索预热"]]
+
+
+def test_checkpoint_database_url_has_bounded_connect_timeout() -> None:
+    settings = Settings(
+        database_url=(
+            "postgresql+psycopg://app_rw:p%40ss@database.example:5432/management_star"
+            "?sslmode=require"
+        ),
+        database_connect_timeout_seconds=3,
+    )
+
+    checkpoint_url = make_url(settings.checkpoint_database_url)
+
+    assert checkpoint_url.drivername == "postgresql"
+    assert checkpoint_url.password == "p@ss"
+    assert checkpoint_url.query["sslmode"] == "require"
+    assert checkpoint_url.query["connect_timeout"] == "3"

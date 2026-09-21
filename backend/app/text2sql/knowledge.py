@@ -36,9 +36,22 @@ KNOWLEDGE_DOCUMENTS = (
         "schema",
         "docs/data/data-dictionary.md",
         "项目风险语义视图",
-        "mart.v_pipeline_risk 包含项目、机会编号、阶段、经营单元、行业、产品线、预计落地日期、未税金额、排产状态以及竞争、签约、交付和总体风险。",
+        "mart.v_pipeline_risk 包含项目、机会编号、阶段、经营单元、行业、产品线、预计落地日期、未税金额、排产状态以及竞争、签约、交付和总体风险。项目或机会数量按 project_id 去重计数；不得用合同 contract_id 替代项目数量。按月统计 expected_landing_date 时使用 date_trunc('month', expected_landing_date)::date 返回月初日期。",
         ("mart.v_pipeline_risk",),
-        {"keywords": ["风险", "项目", "机会", "阶段", "排产", "PPL", "落地"]},
+        {
+            "keywords": [
+                "风险",
+                "项目",
+                "项目数量",
+                "项目数",
+                "机会",
+                "阶段",
+                "经营单元",
+                "排产",
+                "PPL",
+                "落地",
+            ]
+        },
     ),
     KnowledgeDocument(
         "columns.sales_performance.time_amount",
@@ -93,6 +106,15 @@ KNOWLEDGE_DOCUMENTS = (
         "商业完成率 achievement_rate = revenue_amount / commercial_target_amount * 100；查询低于阈值时按完成率升序，零目标使用 NULLIF 防止除零。",
         ("mart.v_target_achievement",),
         {"keywords": ["完成率", "低于", "达成率", "70%"]},
+    ),
+    KnowledgeDocument(
+        "metric.project_count",
+        "metric",
+        "docs/data/metric-definitions.md",
+        "项目数量",
+        "项目或机会数量使用 mart.v_pipeline_risk，并按 project_id 去重计数；按经营单元统计项目数量时以 business_unit_name 分组。合同 contract_id 只代表合同数量，不得替代项目数量。",
+        ("mart.v_pipeline_risk",),
+        {"keywords": ["项目数量", "项目数", "机会数量", "经营单元", "Top10"]},
     ),
     KnowledgeDocument(
         "metric.revenue",

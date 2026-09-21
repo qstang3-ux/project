@@ -247,3 +247,44 @@ def test_query_result_uuid_is_serialized_without_internal_error() -> None:
     value = uuid4()
 
     assert json_value(value) == str(value)
+
+
+def test_allows_postgres_date_trunc_cast_after_sqlglot_normalization() -> None:
+    validated = SqlValidator().validate(
+        "SELECT date_trunc('month', expected_landing_date)::date AS month, "
+        "count(DISTINCT project_id) AS project_count FROM mart.v_pipeline_risk "
+        "GROUP BY date_trunc('month', expected_landing_date)::date ORDER BY month",
+        ALLOWED,
+    )
+
+    assert "DATE_TRUNC('MONTH', expected_landing_date)" in validated.sql
+
+
+@pytest.mark.parametrize(
+    ("column", "natural_value", "canonical_value"),
+    [
+        ("region", "华东地区", "华东"),
+        ("region", "华南地区", "华南"),
+        ("industry_name", "金融行业", "金融"),
+        ("industry_major_name", "金融行业", "金融"),
+    ],
+)
+def test_normalizes_allowlisted_natural_enum_suffixes(
+    column: str, natural_value: str, canonical_value: str
+) -> None:
+    validated = SqlValidator().validate(
+        f"SELECT count(*) FROM mart.v_sales_performance WHERE {column}='{natural_value}'",
+        ALLOWED,
+    )
+
+    assert f"{column} = '{canonical_value}'" in validated.sql
+    assert natural_value not in validated.sql
+
+
+def test_enum_normalization_does_not_rewrite_non_enum_columns() -> None:
+    validated = SqlValidator().validate(
+        "SELECT contract_no FROM mart.v_sales_performance WHERE customer_name='华东地区'",
+        ALLOWED,
+    )
+
+    assert "customer_name = '华东地区'" in validated.sql
