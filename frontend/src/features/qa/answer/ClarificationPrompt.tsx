@@ -1,8 +1,21 @@
-import { QuestionCircleOutlined, SendOutlined, StopOutlined } from '@ant-design/icons';
-import { Alert, Button, Input, Popconfirm, Space, Tag } from 'antd';
-import { useState } from 'react';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import type { ExecutionDetail } from '../../../api/types';
 import { ExecutionContext } from './ExecutionContext';
+
+const slotLabels: Record<string, string> = {
+  metric: '指标口径',
+  指标: '指标口径',
+  dimension: '分析维度',
+  维度: '分析维度',
+  time_range: '时间范围',
+  时间范围: '时间范围',
+  year: '分析年份',
+  年份: '分析年份',
+  business_unit: '经营单元',
+  经营单元: '经营单元',
+  comparison_basis: '比较基准',
+  比较基准: '比较基准',
+};
 
 interface ClarificationPromptProps {
   clarification: ExecutionDetail['clarification'];
@@ -10,32 +23,31 @@ interface ClarificationPromptProps {
   normalizedQuestion: ExecutionDetail['normalizedQuestion'];
   missingSlots: string[];
   clarificationRound: number;
-  submitting: boolean;
-  cancelling: boolean;
-  onSubmit: (content: string) => void;
-  onCancel: () => void;
 }
 
-export function ClarificationPrompt({ clarification, intent, normalizedQuestion, missingSlots, clarificationRound, submitting, cancelling, onSubmit, onCancel }: ClarificationPromptProps) {
-  const [content, setContent] = useState('');
+export function ClarificationPrompt({ clarification, intent, normalizedQuestion, missingSlots, clarificationRound }: ClarificationPromptProps) {
   const prompt = clarification?.prompt ?? '请补充完成本次分析所需的信息。';
   const round = clarification?.round ?? clarificationRound;
   const maxRounds = clarification?.maxRounds ?? 2;
   const slots = clarification?.missingSlots ?? missingSlots;
 
   return (
-    <section className="clarification-prompt">
-      <Alert type="warning" showIcon icon={<QuestionCircleOutlined />} message={prompt} description={slots.length ? <Space size={[6, 6]} wrap><span>待补充</span>{slots.map((slot) => <Tag key={slot}>{slot}</Tag>)}</Space> : undefined} />
-      <ExecutionContext intent={intent} normalizedQuestion={normalizedQuestion} round={round} maxRounds={maxRounds} />
-      <div className="clarification-input">
-        <Input.TextArea aria-label="补充信息" value={content} onChange={(event) => setContent(event.target.value)} rows={2} maxLength={2000} showCount disabled={submitting || cancelling} placeholder="补充时间范围、经营单元或指标口径" />
-        <Space>
-          <Popconfirm title="停止本次问数？" description="已补充的内容不会继续执行。" okText="停止" cancelText="继续填写" okButtonProps={{ danger: true }} onConfirm={onCancel}>
-            <Button icon={<StopOutlined />} aria-label="停止" danger disabled={submitting} loading={cancelling}>停止</Button>
-          </Popconfirm>
-          <Button type="primary" icon={<SendOutlined />} aria-label="提交并继续" loading={submitting} disabled={cancelling || !content.trim()} onClick={() => onSubmit(content.trim())}>提交并继续</Button>
-        </Space>
+    <section className="clarification-prompt" role="status" aria-live="polite">
+      <div className="clarification-heading">
+        <span className="clarification-icon" aria-hidden="true"><QuestionCircleOutlined /></span>
+        <div className="clarification-copy">
+          <span className="clarification-eyebrow">需要补充信息</span>
+          <p>{prompt}</p>
+        </div>
+        <span className="clarification-round">{round} / {maxRounds}</span>
       </div>
+      {slots.length ? (
+        <div className="clarification-slots" aria-label="建议补充内容">
+          <span>建议补充</span>
+          {slots.map((slot) => <b key={slot}>{slotLabels[slot] ?? slot}</b>)}
+        </div>
+      ) : null}
+      <ExecutionContext intent={intent} normalizedQuestion={normalizedQuestion} round={round} maxRounds={maxRounds} />
     </section>
   );
 }

@@ -148,4 +148,31 @@ describe('QuestionComposer', () => {
     fireEvent.click(stopButton);
     expect(onStop).toHaveBeenCalledTimes(1);
   });
+
+  it('reuses the main composer for clarification without requiring a data source selection', () => {
+    const onSubmit = vi.fn();
+    render(
+      <QuestionComposer
+        value="查询2026年各经营单元完成率"
+        onChange={vi.fn()}
+        onSubmit={onSubmit}
+        onStop={vi.fn()}
+        running={false}
+        clarificationMode
+        sources={[]}
+        selectedSourceIds={[]}
+        maxSelection={8}
+        sourcesLoading={false}
+        sourcesError={false}
+        onSourcesChange={vi.fn()}
+        onQuickQuestionSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('textbox', { name: '补充信息' })).toHaveAttribute('placeholder', '请在这里补充时间范围、经营单元或指标口径');
+    expect(screen.getByText('补充当前问题')).toBeInTheDocument();
+    expect(screen.queryByText('快捷提问')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '提交并继续' }));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
 });

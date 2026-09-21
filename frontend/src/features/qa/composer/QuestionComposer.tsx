@@ -1,5 +1,5 @@
-import { ArrowUpOutlined, AudioOutlined } from '@ant-design/icons';
-import { App, Button, Input, Tooltip } from 'antd';
+import { ArrowUpOutlined, AudioOutlined, QuestionCircleOutlined, StopOutlined } from '@ant-design/icons';
+import { App, Button, Input, Popconfirm, Tooltip } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { DataSourcePicker } from './DataSourcePicker';
 import type { DataSource } from '../../../api/types';
@@ -12,6 +12,7 @@ interface QuestionComposerProps {
   onSubmit: () => void;
   onStop: () => void;
   running: boolean;
+  clarificationMode?: boolean;
   sources: DataSource[];
   selectedSourceIds: string[];
   maxSelection: number;
@@ -28,7 +29,8 @@ export function QuestionComposer(props: QuestionComposerProps) {
   const [composing, setComposing] = useState(false);
   const submitLockedRef = useRef(false);
   const tooLong = props.value.length > 2000;
-  const disabled = !props.value.trim() || tooLong || props.selectedSourceIds.length === 0 || props.running;
+  const clarificationMode = props.clarificationMode === true;
+  const disabled = !props.value.trim() || tooLong || !clarificationMode && props.selectedSourceIds.length === 0 || props.running;
   const speech = useBrowserSpeechRecognition({
     enabled: Boolean(props.speechEnabled) && !props.running,
     value: props.value,
@@ -50,8 +52,8 @@ export function QuestionComposer(props: QuestionComposerProps) {
     <div className="composer-wrap">
       <div className="composer">
         <Input.TextArea
-          aria-label="问题输入"
-          placeholder="请输入经营数据问题，Enter 发送，Shift+Enter 换行"
+          aria-label={clarificationMode ? '补充信息' : '问题输入'}
+          placeholder={clarificationMode ? '请在这里补充时间范围、经营单元或指标口径' : '请输入经营数据问题，Enter 发送，Shift+Enter 换行'}
           autoSize={{ minRows: 1, maxRows: 5 }}
           value={props.value}
           onChange={(event) => props.onChange(event.target.value)}
@@ -67,8 +69,17 @@ export function QuestionComposer(props: QuestionComposerProps) {
         />
         <div className="composer-footer">
           <div className="composer-context-tools">
-            <QuickQuestions frequentEnabled={props.frequentQuestionsEnabled !== false} onSelect={props.onQuickQuestionSelect} />
-            <DataSourcePicker sources={props.sources} selectedIds={props.selectedSourceIds} maxSelection={props.maxSelection} loading={props.sourcesLoading} error={props.sourcesError} onChange={props.onSourcesChange} />
+            {clarificationMode ? (
+              <div className="clarification-composer-context">
+                <QuestionCircleOutlined />
+                <span>补充当前问题</span>
+              </div>
+            ) : (
+              <>
+                <QuickQuestions frequentEnabled={props.frequentQuestionsEnabled !== false} onSelect={props.onQuickQuestionSelect} />
+                <DataSourcePicker sources={props.sources} selectedIds={props.selectedSourceIds} maxSelection={props.maxSelection} loading={props.sourcesLoading} error={props.sourcesError} onChange={props.onSourcesChange} />
+              </>
+            )}
             <span className={`composer-count ${tooLong ? 'count-error' : ''}`}>{props.value.length}/2000</span>
           </div>
           <div className="composer-actions">
@@ -94,19 +105,26 @@ export function QuestionComposer(props: QuestionComposerProps) {
                 </Button>
               </Tooltip>
             ) : (
-              <Tooltip title={props.selectedSourceIds.length === 0 ? '请先选择数据源' : '发送问题'}>
-                <span>
-                  <Button
-                    className="send-question-button"
-                    type="primary"
-                    shape="circle"
-                    icon={<ArrowUpOutlined />}
-                    aria-label="发送问题"
-                    disabled={disabled}
-                    onClick={submit}
-                  />
-                </span>
-              </Tooltip>
+              <>
+                {clarificationMode ? (
+                  <Popconfirm title="停止本次问数？" description="当前补充内容不会继续执行。" okText="停止" cancelText="继续填写" okButtonProps={{ danger: true }} onConfirm={props.onStop}>
+                    <Button className="clarification-stop-button" icon={<StopOutlined />} aria-label="停止">停止</Button>
+                  </Popconfirm>
+                ) : null}
+                <Tooltip title={clarificationMode ? '提交补充信息' : props.selectedSourceIds.length === 0 ? '请先选择数据源' : '发送问题'}>
+                  <span>
+                    <Button
+                      className="send-question-button"
+                      type="primary"
+                      shape="circle"
+                      icon={<ArrowUpOutlined />}
+                      aria-label={clarificationMode ? '提交并继续' : '发送问题'}
+                      disabled={disabled}
+                      onClick={submit}
+                    />
+                  </span>
+                </Tooltip>
+              </>
             )}
           </div>
         </div>

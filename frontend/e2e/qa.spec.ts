@@ -310,7 +310,7 @@ test('澄清支持第二轮和取消等待', async ({ page }) => {
   await expect(page.getByText('请再补充查询年份或时间范围。')).toBeVisible();
   await page.getByRole('button', { name: '停止', exact: true }).click();
   await page.locator('.ant-popconfirm-buttons').getByRole('button', { name: /停\s*止/ }).click();
-  await expect(page.getByText('已停止')).toBeVisible();
+  await expect(page.locator('.assistant-status-cancelled')).toContainText('已停止');
 });
 
 test('非安全问题进入安全拒绝而非澄清', async ({ page }) => {
@@ -363,20 +363,28 @@ test('SSE 游标过期后清空游标并全量恢复', async ({ page }) => {
 test('宽屏问答区扩展且模型配置在窄屏内保持场景选择布局', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 900 });
   await page.goto('/qa');
+  await expect(page.locator('.app-watermark')).toBeVisible();
   await expect(page.locator('.qa-scroll')).toBeVisible();
   const qaLayout = await page.evaluate(() => {
     const scroll = document.querySelector<HTMLElement>('.qa-scroll');
     const composer = document.querySelector<HTMLElement>('.composer-wrap');
-    if (!scroll || !composer) throw new Error('缺少问答布局容器');
+    const content = document.querySelector<HTMLElement>('.app-content');
+    const watermark = document.querySelector<HTMLElement>('.app-watermark');
+    if (!scroll || !composer || !content || !watermark) throw new Error('缺少问答布局容器');
     const scrollStyle = getComputedStyle(scroll);
     const composerStyle = getComputedStyle(composer);
     return {
       conversationWidth: scroll.clientWidth - Number.parseFloat(scrollStyle.paddingLeft) - Number.parseFloat(scrollStyle.paddingRight),
       composerWidth: composer.clientWidth - Number.parseFloat(composerStyle.paddingLeft) - Number.parseFloat(composerStyle.paddingRight),
+      outerScrollDelta: content.scrollHeight - content.clientHeight,
+      watermarkHeight: watermark.clientHeight,
+      contentHeight: content.clientHeight,
     };
   });
-  expect(qaLayout.conversationWidth).toBeGreaterThanOrEqual(1180);
-  expect(qaLayout.composerWidth).toBeGreaterThanOrEqual(1180);
+  expect(qaLayout.conversationWidth).toBeGreaterThanOrEqual(1320);
+  expect(qaLayout.composerWidth).toBeGreaterThanOrEqual(1320);
+  expect(qaLayout.outerScrollDelta).toBeLessThanOrEqual(1);
+  expect(qaLayout.watermarkHeight).toBe(qaLayout.contentHeight);
 
   await page.setViewportSize({ width: 1024, height: 720 });
   await page.goto('/settings/application');

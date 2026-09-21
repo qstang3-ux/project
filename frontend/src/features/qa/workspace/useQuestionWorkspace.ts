@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../api/client';
+import { createClarificationIdempotencyKey } from '../../../api/idempotency';
 import { queryKeys } from '../../../api/queryKeys';
 import type { QueryAccepted, QueryCreate, SessionListResponse } from '../../../api/types';
 import { findActiveExecutionId } from './executionRecovery';
@@ -108,6 +109,20 @@ export function useQuestionWorkspace() {
     onSuccess: activateAcceptedQuery,
   });
 
+  const submitClarification = useMutation({
+    mutationFn: async (content: string) => {
+      const execution = executionQuery.data;
+      if (!execution || execution.status !== 'awaiting_input') throw new Error('当前没有等待补充的问数');
+      const round = execution.clarification?.round ?? execution.clarificationRound;
+      const idempotencyKey = createClarificationIdempotencyKey(execution.id, round, content);
+      return api.submitClarification(execution.id, { content }, idempotencyKey);
+    },
+    onSuccess: async (accepted) => {
+      activateAcceptedQuery(accepted);
+      await executionQuery.refetch();
+    },
+  });
+
   const resubmitMessage = useMutation({
     mutationFn: ({ messageId, question, dataSourceIds }: { messageId: string; question: string; dataSourceIds: string[] }) =>
       api.resubmitMessage(messageId, { question, dataSourceIds, generateChart: true, contextMessageIds: [] }),
@@ -124,8 +139,10 @@ export function useQuestionWorkspace() {
     onSuccess: () => void executionQuery.refetch(),
   });
 
-  const running = submitQuery.isPending || resubmitMessage.isPending || regenerateAnswer.isPending || executionQuery.isFetching && !executionQuery.data ||
-    executionQuery.data?.status === 'queued' || executionQuery.data?.status === 'running' || executionQuery.data?.status === 'awaiting_input';
+  const awaitingClarification = executionQuery.data?.status === 'awaiting_input';
+  const running = submitQuery.isPending || submitClarification.isPending || resubmitMessage.isPending || regenerateAnswer.isPending || executionQuery.isFetching && !executionQuery.data ||
+    executionQuery.data?.status === 'queued' || executionQuery.data?.status === 'running';
+  const interactionDisabled = running || awaitingClarification;
 
   return {
     sessionsQuery,
@@ -146,9 +163,12 @@ export function useQuestionWorkspace() {
     updateSession,
     deleteSession,
     submitQuery,
+    submitClarification,
     resubmitMessage,
     regenerateAnswer,
     stopExecution,
+    awaitingClarification,
+    interactionDisabled,
     currentSession: useMemo(() => sessionsQuery.data?.items.find((session) => session.id === selectedSessionId), [sessionsQuery.data, selectedSessionId]),
   };
 }

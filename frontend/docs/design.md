@@ -15,7 +15,8 @@ AI 消息拆为 `ExecutionSteps`、`SqlViewer`、`ResultTable`、`ResultChart`�
 ## 状态
 
 - 服务端状态全部使用 TanStack Query；非敏感 UI 偏好才使用 localStorage。
-- SSE 状态机：idle → queued → running → completed/failed/cancelled/rejected。
+- SSE 状态机：idle → queued → running → awaiting_input → queued/running → completed/failed/cancelled/rejected。
+- `awaiting_input` 时回答卡只承载提示和上下文，底部 `QuestionComposer` 复用为澄清输入；提交走原 execution 的 clarification API，数据源和 checkpoint 不变。
 - SSE 断线最多自动重连 3 次；随后轮询执行详情取得最终状态。
 - 查询键以资源 ID 为中心；mutation 成功后精确失效缓存。
 

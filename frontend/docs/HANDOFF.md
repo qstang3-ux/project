@@ -58,11 +58,13 @@ QuestionPage
 
 - `awaiting_input` 是正常可交互等待态，不展示为 SQL 失败。
 - 回答卡展示后端返回的 prompt、意图、规范化问题、缺失槽位和当前/最大轮次；所有内容按纯文本渲染。
+- 回答卡不包含独立输入框；页面底部的主 `QuestionComposer` 在等待态切换为“补充信息”模式并提交澄清，避免页面同时出现两套输入控件。
 - 补充信息通过 `POST /qa/executions/{executionId}/clarifications` 提交，幂等键由 execution ID、澄清轮次和内容哈希稳定生成。
 - 补充后继续原 execution/checkpoint，不创建新会话或新 execution。同一 execution 的回答卡只渲染一次，并锚定在最后一条相关用户补充消息之后。
 - 刷新页面时会从消息的 `awaiting_input` 执行状态恢复澄清卡；用户可在等待期间确认取消。
 - 真实模式订阅 `clarification.required` SSE 事件，SSE 不可用时保留执行详情轮询降级。
 - 契约 Mock 覆盖第一轮、第二轮、刷新恢复、重复提交、取消和安全拒绝。Mock 只在 `sessionStorage` 保存无 SQL/无结果的等待态快照。
+- 2026-09-21 交互收口：澄清卡只展示提示、缺失槽位与轮次，底部主输入框切换为补充模式；刷新恢复、双击防重、第二轮和取消均由 E2E 覆盖。当前前端门禁为 64 项 Vitest、11 项 Playwright 全部通过。
 
 ## 页面滚动
 

@@ -31,7 +31,7 @@ export function AssistantMessage({ executionId, preview, onFollowUp, onRegenerat
   return (
     <Card className="assistant-card">
       <AssistantMessageHeader status={execution.status} />
-      {isFailure ? <Alert type={execution.status === 'cancelled' ? 'info' : 'error'} showIcon message={execution.error?.message ?? statusLabel(execution.status)} description="你可以调整问题或数据源后重新提问。" /> : null}
+      {isFailure ? <Alert className={`execution-state-notice execution-state-${execution.status}`} type={execution.status === 'cancelled' ? 'info' : execution.status === 'rejected' ? 'warning' : 'error'} showIcon message={execution.error?.message ?? statusLabel(execution.status)} description={statusDescription(execution.status)} /> : null}
       {execution.status === 'awaiting_input' ? (
         <ClarificationPrompt
           key={execution.clarification?.round ?? execution.clarificationRound}
@@ -40,10 +40,6 @@ export function AssistantMessage({ executionId, preview, onFollowUp, onRegenerat
           normalizedQuestion={execution.normalizedQuestion}
           missingSlots={execution.missingSlots}
           clarificationRound={execution.clarificationRound}
-          submitting={state.clarificationMutation.isPending}
-          cancelling={state.cancelMutation.isPending}
-          onSubmit={state.submitClarification}
-          onCancel={() => state.cancelMutation.mutate()}
         />
       ) : null}
       <AnswerContent execution={execution} animateAnswer={animateAnswer} />
@@ -57,4 +53,10 @@ export function AssistantMessage({ executionId, preview, onFollowUp, onRegenerat
 
 function statusLabel(status: string): string {
   return { queued: '排队中', running: '执行中', awaiting_input: '待补充信息', completed: '已完成', failed: '执行失败', cancelled: '已停止', rejected: '安全拒绝' }[status] ?? '未知状态';
+}
+
+function statusDescription(status: string): string {
+  if (status === 'cancelled') return '本次问数已停止，你可以修改问题后重新发送。';
+  if (status === 'rejected') return '请求已在安全检查阶段终止，没有执行数据库查询。';
+  return '可以调整问题或数据源后重新提问；需要排查时可在问答日志中查看 Request ID。';
 }

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { BarChartOutlined, FileSearchOutlined, MenuFoldOutlined, MenuUnfoldOutlined, RobotOutlined, SafetyCertificateOutlined, SettingOutlined } from '@ant-design/icons';
-import { Avatar, Button, Grid, Layout, Menu, Tooltip } from 'antd';
+import { Avatar, Button, Grid, Layout, Menu, Tooltip, Watermark } from 'antd';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 const { Header, Sider, Content } = Layout;
@@ -51,7 +51,19 @@ export function AppShell() {
             </Tooltip>
           ) : null}
         </Sider>
-        <Content className="app-content"><Outlet /></Content>
+        <Content className="app-content">
+          <Watermark
+            className={`app-watermark${location.pathname === '/qa' ? ' app-watermark-workspace' : ''}`}
+            content={['经管之星', '内部使用']}
+            font={{ color: 'rgba(36, 59, 122, 0.055)', fontSize: 13, fontWeight: 550 }}
+            gap={[190, 150]}
+            offset={[48, 34]}
+            rotate={-22}
+            zIndex={3}
+          >
+            <Outlet />
+          </Watermark>
+        </Content>
       </Layout>
     </Layout>
   );

@@ -37,8 +37,19 @@ export function QuestionWorkspace() {
 
   const submit = () => {
     const trimmed = question.trim();
-    if (!trimmed || !selectedSourceIds.length) return;
+    if (!trimmed) return;
     conversation.markForAutoScroll();
+    if (workspace.awaitingClarification) {
+      workspace.submitClarification.mutate(trimmed, {
+        onSuccess: () => {
+          setQuestion('');
+          void message.success('补充信息已提交，正在继续分析。');
+        },
+        onError: (error) => void message.error(getErrorMessage(error)),
+      });
+      return;
+    }
+    if (!selectedSourceIds.length) return;
     workspace.submitQuery.mutate({ question: trimmed, dataSourceIds: selectedSourceIds }, {
       onSuccess: () => setQuestion(''),
       onError: (error) => void message.error(getErrorMessage(error)),
@@ -78,7 +89,7 @@ export function QuestionWorkspace() {
               onFollowUp={setQuestion}
               onResubmit={(source, editedQuestion) => workspace.resubmitMessage.mutate({ messageId: source.id, question: editedQuestion, dataSourceIds: selectedSourceIds }, { onSuccess: () => void message.success('已创建编辑分支，正在重新分析。'), onError: (error) => void message.error(getErrorMessage(error)) })}
               resubmitting={workspace.resubmitMessage.isPending}
-              interactionDisabled={workspace.running}
+              interactionDisabled={workspace.interactionDisabled}
               onRegenerate={(messageId) => workspace.regenerateAnswer.mutate(messageId, { onSuccess: () => void message.success('正在重新生成回答。'), onError: (error) => void message.error(getErrorMessage(error)) })}
               regenerating={workspace.regenerateAnswer.isPending}
               speechEnabled={configQuery.data.ttsEnabled}
@@ -93,6 +104,7 @@ export function QuestionWorkspace() {
           onSubmit={submit}
           onStop={() => workspace.stopExecution.mutate()}
           running={workspace.running}
+          clarificationMode={workspace.awaitingClarification}
           sources={sourcesQuery.data?.items ?? []}
           selectedSourceIds={selectedSourceIds}
           maxSelection={sourcesQuery.data?.maxSelection ?? 8}
