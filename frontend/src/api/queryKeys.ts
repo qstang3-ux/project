@@ -1,0 +1,17 @@
+export const queryKeys = {
+  dataSources: ['data-sources'] as const,
+  sessions: ['qa', 'sessions'] as const,
+  messages: (sessionId: string) => ['qa', 'sessions', sessionId, 'messages'] as const,
+  execution: (executionId: string) => ['qa', 'executions', executionId] as const,
+  answerVersions: (messageId: string) => ['qa', 'messages', messageId, 'versions'] as const,
+  frequentQuestions: ['questions', 'frequent'] as const,
+  favorites: ['questions', 'favorites'] as const,
+  qaLogsRoot: ['qa', 'logs'] as const,
+  qaLogs: (filters: Record<string, unknown>) => ['qa', 'logs', filters] as const,
+  qaLogDetail: (id: string) => ['qa', 'logs', id] as const,
+  applicationConfig: ['application-config'] as const,
+  models: ['model-configs'] as const,
+  feedbackRoot: ['feedback'] as const,
+  feedback: (filters: Record<string, unknown>) => ['feedback', filters] as const,
+  feedbackDetail: (id: string) => ['feedback', id] as const,
+};

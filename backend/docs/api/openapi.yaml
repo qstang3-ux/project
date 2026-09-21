@@ -1,0 +1,1059 @@
+openapi: 3.0.3
+info:
+  title: 经管之星 API
+  version: 1.0.0
+  description: 前后端唯一接口契约。金额以十进制字符串返回，时间使用 ISO 8601 UTC。
+servers:
+  - url: /api/v1
+security: []
+
+paths:
+  /data-sources:
+    get:
+      summary: 获取数据源列表
+      operationId: listDataSources
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/DataSourceListResponse'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /qa/sessions:
+    get:
+      summary: 获取会话列表
+      operationId: listSessions
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - {name: keyword, in: query, schema: {type: string, maxLength: 60}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/SessionListResponse'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+    post:
+      summary: 创建会话
+      operationId: createSession
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/SessionCreate'}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Session'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /qa/sessions/{sessionId}:
+    parameters:
+      - {$ref: '#/components/parameters/SessionId'}
+    get:
+      summary: 获取会话详情
+      operationId: getSession
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Session'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+    patch:
+      summary: 更新会话
+      operationId: updateSession
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/SessionUpdate'}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Session'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+    delete:
+      summary: 删除会话
+      operationId: deleteSession
+      responses:
+        '204': {description: Deleted}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /qa/sessions/{sessionId}/messages:
+    parameters:
+      - {$ref: '#/components/parameters/SessionId'}
+    get:
+      summary: 获取会话消息
+      operationId: listMessages
+      parameters:
+        - {name: cursor, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/MessageListResponse'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /qa/sessions/{sessionId}/queries:
+    parameters:
+      - {$ref: '#/components/parameters/SessionId'}
+    post:
+      summary: 提交问数请求
+      operationId: createQuery
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/QueryCreate'}}}
+      responses:
+        '202': {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/QueryAccepted'}}}}
+        '409': {$ref: '#/components/responses/ErrorResponse'}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /qa/executions/{executionId}/events:
+    parameters:
+      - {$ref: '#/components/parameters/ExecutionId'}
+    get:
+      summary: 订阅执行事件
+      operationId: streamExecution
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: >-
+            上次成功接收的事件 ID，格式为 `<execution UUID>:<sequence>`；存在时优先于
+            lastEventId query 参数，仅重放该事件之后的持久事件。
+          schema: {type: string, maxLength: 80}
+        - name: lastEventId
+          in: query
+          required: false
+          description: >-
+            浏览器或手工重连的 Last-Event-ID fallback；Header 存在时忽略本参数。
+          schema: {type: string, maxLength: 80}
+      responses:
+        '200':
+          description: >-
+            SSE stream；data 为 ExecutionEvent JSON。首连从保留历史起点重放；空闲活动执行
+            发送无 ID 的 keepalive 注释，终态或 awaiting_input 历史发送完毕后关闭连接。
+          content: {text/event-stream: {schema: {type: string}}}
+        '409': {$ref: '#/components/responses/ErrorResponse'}
+        '410': {$ref: '#/components/responses/ErrorResponse'}
+        '422': {$ref: '#/components/responses/ErrorResponse'}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /qa/executions/{executionId}:
+    parameters:
+      - {$ref: '#/components/parameters/ExecutionId'}
+    get:
+      summary: 获取执行详情
+      operationId: getExecution
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ExecutionDetail'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /qa/executions/{executionId}/clarifications:
+    parameters:
+      - {$ref: '#/components/parameters/ExecutionId'}
+    post:
+      summary: 为等待输入的执行提交补充信息并恢复同一 checkpoint
+      operationId: submitClarification
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ClarificationSubmit'}}}
+      responses:
+        '202': {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/QueryAccepted'}}}}
+        '409': {$ref: '#/components/responses/ErrorResponse'}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /qa/executions/{executionId}/cancel:
+    parameters:
+      - {$ref: '#/components/parameters/ExecutionId'}
+    post:
+      summary: 取消执行
+      operationId: cancelExecution
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ExecutionStatusResponse'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /qa/executions/{executionId}/export:
+    parameters:
+      - {$ref: '#/components/parameters/ExecutionId'}
+    get:
+      summary: 导出查询结果
+      operationId: exportExecutionCsv
+      responses:
+        '200': {description: UTF-8 CSV, content: {text/csv: {schema: {type: string, format: binary}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /qa/messages/{messageId}/resubmit:
+    parameters:
+      - {$ref: '#/components/parameters/MessageId'}
+    post:
+      summary: 编辑并重新提交问题
+      operationId: resubmitMessage
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/MessageResubmitRequest'}}}
+      responses:
+        '202': {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/QueryAccepted'}}}}
+        '409': {$ref: '#/components/responses/ErrorResponse'}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /qa/messages/{messageId}/regenerate:
+    parameters:
+      - {$ref: '#/components/parameters/MessageId'}
+    post:
+      summary: 重新生成回答
+      operationId: regenerateAnswer
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: false
+        content: {application/json: {schema: {$ref: '#/components/schemas/RegenerateRequest'}}}
+      responses:
+        '202': {description: Accepted, content: {application/json: {schema: {$ref: '#/components/schemas/QueryAccepted'}}}}
+        '409': {$ref: '#/components/responses/ErrorResponse'}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /qa/messages/{messageId}/versions:
+    parameters:
+      - {$ref: '#/components/parameters/MessageId'}
+    get:
+      summary: 获取回答版本
+      operationId: listAnswerVersions
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/AnswerVersion'}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /questions/frequent:
+    get:
+      summary: 获取常问问题
+      operationId: listFrequentQuestions
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 20, default: 10}}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/FrequentQuestion'}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /questions/favorites:
+    get:
+      summary: 获取收藏问题
+      operationId: listFavorites
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/FavoriteQuestion'}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+    post:
+      summary: 收藏问题
+      operationId: addFavorite
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/FavoriteCreate'}}}
+      responses:
+        '200': {description: Existing, content: {application/json: {schema: {$ref: '#/components/schemas/FavoriteQuestion'}}}}
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/FavoriteQuestion'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /questions/favorites/{favoriteId}:
+    parameters:
+      - {$ref: '#/components/parameters/FavoriteId'}
+    delete:
+      summary: 取消收藏问题
+      operationId: removeFavorite
+      responses:
+        '204': {description: Deleted or already absent}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /model-configs:
+    get:
+      summary: 获取模型配置列表
+      operationId: listModels
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/ModelConfig'}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+    post:
+      summary: 创建模型配置
+      operationId: createModel
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ModelConfigCreate'}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/ModelConfig'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /model-configs/test:
+    post:
+      summary: 测试模型连接
+      operationId: testModel
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ModelConnectionTestRequest'}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ModelConnectionTestResult'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /model-configs/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/ModelConfigId'}
+    get:
+      summary: 获取模型配置详情
+      operationId: getModel
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ModelConfig'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+    patch:
+      summary: 更新模型配置
+      operationId: updateModel
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ModelConfigUpdate'}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ModelConfig'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+    delete:
+      summary: 删除模型配置
+      operationId: deleteModel
+      responses:
+        '204': {description: Deleted}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /model-configs/{id}/activate:
+    parameters:
+      - {$ref: '#/components/parameters/ModelConfigId'}
+    post:
+      summary: 启用模型配置
+      operationId: activateModel
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ModelConfig'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /application-config:
+    get:
+      summary: 获取应用配置
+      operationId: getApplicationConfig
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ApplicationConfig'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+    put:
+      summary: 更新应用配置
+      operationId: updateApplicationConfig
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ApplicationConfigUpdate'}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ApplicationConfig'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /feedback:
+    get:
+      summary: 获取反馈列表
+      operationId: listFeedback
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - {name: keyword, in: query, schema: {type: string, maxLength: 200}}
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/FeedbackStatus'}}
+        - {name: reason, in: query, schema: {$ref: '#/components/schemas/FeedbackReason'}}
+        - {name: userId, in: query, schema: {type: string, maxLength: 64}}
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/FeedbackListResponse'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+    post:
+      summary: 提交反馈
+      operationId: createFeedback
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/FeedbackCreate'}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/FeedbackDetail'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /feedback/{id}:
+    parameters:
+      - {$ref: '#/components/parameters/FeedbackId'}
+    get:
+      summary: 获取反馈详情
+      operationId: getFeedback
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/FeedbackDetail'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+    patch:
+      summary: 处理反馈
+      operationId: updateFeedback
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/FeedbackUpdate'}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/FeedbackDetail'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /qa/logs:
+    get:
+      summary: 获取问答日志列表
+      operationId: listQaLogs
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/PageSize'}
+        - {name: keyword, in: query, schema: {type: string, maxLength: 200}}
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/ExecutionStatus'}}
+        - {name: modelConfigId, in: query, schema: {type: string, format: uuid}}
+        - {name: userId, in: query, schema: {type: string, maxLength: 64}}
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/QaLogListResponse'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /qa/logs/{executionId}:
+    parameters:
+      - {$ref: '#/components/parameters/ExecutionId'}
+    get:
+      summary: 获取问答日志详情
+      operationId: getQaLog
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/QaLogDetail'}}}}
+        default: {$ref: '#/components/responses/ErrorResponse'}
+
+  /health/live:
+    get:
+      summary: 存活检查
+      operationId: liveness
+      responses:
+        '200': {description: Alive, content: {application/json: {schema: {$ref: '#/components/schemas/HealthResponse'}}}}
+
+  /health/ready:
+    get:
+      summary: 就绪检查
+      operationId: readiness
+      responses:
+        '200': {description: Ready, content: {application/json: {schema: {$ref: '#/components/schemas/HealthResponse'}}}}
+        '503': {description: Not ready, content: {application/json: {schema: {$ref: '#/components/schemas/HealthResponse'}}}}
+
+components:
+  parameters:
+    SessionId: {name: sessionId, in: path, required: true, schema: {type: string, format: uuid}}
+    ExecutionId: {name: executionId, in: path, required: true, schema: {type: string, format: uuid}}
+    MessageId: {name: messageId, in: path, required: true, schema: {type: string, format: uuid}}
+    ModelConfigId: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    FeedbackId: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    FavoriteId: {name: favoriteId, in: path, required: true, schema: {type: string, format: uuid}}
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 128}}
+    Page: {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+    PageSize: {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+
+  responses:
+    ErrorResponse:
+      description: 统一脱敏错误
+      content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}
+
+  schemas:
+    PageMeta:
+      type: object
+      required: [page, pageSize, total, hasMore]
+      properties:
+        page: {type: integer, minimum: 1}
+        pageSize: {type: integer, minimum: 1}
+        total: {type: integer, minimum: 0}
+        hasMore: {type: boolean}
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error: {$ref: '#/components/schemas/ErrorDetail'}
+    ErrorDetail:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code: {type: string, example: VALIDATION_ERROR}
+        message: {type: string}
+        requestId: {type: string}
+        details: {type: object, additionalProperties: true, nullable: true}
+
+    DataSource:
+      type: object
+      required: [id, name, group, enabled, isDefault, dataAsOf]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        description: {type: string, nullable: true}
+        group: {type: string, enum: [ledger, report]}
+        enabled: {type: boolean}
+        isDefault: {type: boolean}
+        unavailableReason: {type: string, nullable: true}
+        dataAsOf: {type: string, format: date}
+        allowedObjects: {type: array, items: {type: string}}
+    DataSourceListResponse:
+      type: object
+      required: [items, maxSelection]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/DataSource'}}
+        maxSelection: {type: integer, minimum: 1, default: 8}
+
+    SessionCreate:
+      type: object
+      properties:
+        title: {type: string, minLength: 1, maxLength: 60, nullable: true}
+    SessionUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        title: {type: string, minLength: 1, maxLength: 60}
+        pinned: {type: boolean}
+    Session:
+      type: object
+      required: [id, title, pinned, messageCount, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        title: {type: string}
+        pinned: {type: boolean}
+        parentSessionId: {type: string, format: uuid, nullable: true}
+        messageCount: {type: integer, minimum: 0}
+        lastMessagePreview: {type: string, nullable: true}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    SessionListResponse:
+      type: object
+      required: [items, page]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Session'}}
+        page: {$ref: '#/components/schemas/PageMeta'}
+
+    MessageRole: {type: string, enum: [user, assistant]}
+    Message:
+      type: object
+      required: [id, sessionId, role, content, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        sessionId: {type: string, format: uuid}
+        role: {$ref: '#/components/schemas/MessageRole'}
+        content: {type: string}
+        sourceMessageId: {type: string, format: uuid, nullable: true}
+        executionId: {type: string, format: uuid, nullable: true}
+        executionStatus: {$ref: '#/components/schemas/ExecutionStatus'}
+        favoriteId: {type: string, format: uuid, nullable: true}
+        currentVersionNo: {type: integer, minimum: 1, nullable: true}
+        createdAt: {type: string, format: date-time}
+    MessageListResponse:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Message'}}
+        nextCursor: {type: string, nullable: true}
+        hasMore: {type: boolean}
+
+    QueryCreate:
+      type: object
+      required: [question, dataSourceIds]
+      properties:
+        question: {type: string, minLength: 1, maxLength: 2000}
+        dataSourceIds: {type: array, minItems: 1, maxItems: 8, uniqueItems: true, items: {type: string, format: uuid}}
+        generateChart: {type: boolean, default: true}
+        contextMessageIds: {type: array, maxItems: 20, items: {type: string, format: uuid}}
+    MessageResubmitRequest:
+      allOf:
+        - {$ref: '#/components/schemas/QueryCreate'}
+        - type: object
+          properties:
+            branchTitle: {type: string, minLength: 1, maxLength: 60, nullable: true}
+    RegenerateRequest:
+      type: object
+      properties:
+        modelConfigId: {type: string, format: uuid, nullable: true}
+        generateChart: {type: boolean, default: true}
+    QueryAccepted:
+      type: object
+      required: [sessionId, userMessageId, executionId, status, eventUrl]
+      properties:
+        sessionId: {type: string, format: uuid}
+        userMessageId: {type: string, format: uuid}
+        executionId: {type: string, format: uuid}
+        status: {$ref: '#/components/schemas/ExecutionStatus'}
+        eventUrl: {type: string}
+
+    ClarificationSubmit:
+      type: object
+      required: [content]
+      properties:
+        content: {type: string, minLength: 1, maxLength: 2000}
+    ClarificationRequest:
+      type: object
+      required: [prompt, missingSlots, round, maxRounds]
+      properties:
+        prompt: {type: string}
+        missingSlots: {type: array, items: {type: string}}
+        round: {type: integer, minimum: 1, maximum: 2}
+        maxRounds: {type: integer, minimum: 1, maximum: 2}
+
+    ExecutionStatus: {type: string, enum: [queued, running, awaiting_input, completed, failed, cancelled, rejected]}
+    IntentType: {type: string, enum: [data_query, clarification, business_definition, product_help, chat, out_of_scope, unsafe]}
+    SqlValidationStatus: {type: string, enum: [not_started, passed, rejected]}
+    StepStatus: {type: string, enum: [pending, running, completed, failed, skipped]}
+    ExecutionStepType: {type: string, enum: [intent_classification, clarification_required, schema_selection, sql_generation, sql_validation, query_execution, answer_generation]}
+    ExecutionStep:
+      type: object
+      required: [type, status, summary]
+      properties:
+        type: {$ref: '#/components/schemas/ExecutionStepType'}
+        status: {$ref: '#/components/schemas/StepStatus'}
+        summary: {type: string}
+        startedAt: {type: string, format: date-time, nullable: true}
+        completedAt: {type: string, format: date-time, nullable: true}
+        durationMs: {type: integer, minimum: 0, nullable: true}
+    ExecutionEventType:
+      type: string
+      enum: [execution.started, clarification.required, schema.selected, sql.generated, sql.validated, query.completed, answer.completed, execution.completed, execution.failed, execution.cancelled]
+    ExecutionEvent:
+      type: object
+      required: [id, executionId, type, status, occurredAt, data]
+      properties:
+        id: {type: string}
+        executionId: {type: string, format: uuid}
+        type: {$ref: '#/components/schemas/ExecutionEventType'}
+        status: {$ref: '#/components/schemas/ExecutionStatus'}
+        summary: {type: string, nullable: true}
+        occurredAt: {type: string, format: date-time}
+        data: {$ref: '#/components/schemas/ExecutionEventData'}
+    ExecutionEventData:
+      oneOf:
+        - {$ref: '#/components/schemas/ExecutionStartedEventData'}
+        - {$ref: '#/components/schemas/ClarificationRequiredEventData'}
+        - {$ref: '#/components/schemas/SchemaSelectedEventData'}
+        - {$ref: '#/components/schemas/SqlGeneratedEventData'}
+        - {$ref: '#/components/schemas/SqlValidatedEventData'}
+        - {$ref: '#/components/schemas/QueryCompletedEventData'}
+        - {$ref: '#/components/schemas/AnswerCompletedEventData'}
+        - {$ref: '#/components/schemas/ExecutionCompletedEventData'}
+        - {$ref: '#/components/schemas/ExecutionFailedEventData'}
+        - {$ref: '#/components/schemas/ExecutionCancelledEventData'}
+      discriminator:
+        propertyName: kind
+        mapping:
+          execution.started: '#/components/schemas/ExecutionStartedEventData'
+          clarification.required: '#/components/schemas/ClarificationRequiredEventData'
+          schema.selected: '#/components/schemas/SchemaSelectedEventData'
+          sql.generated: '#/components/schemas/SqlGeneratedEventData'
+          sql.validated: '#/components/schemas/SqlValidatedEventData'
+          query.completed: '#/components/schemas/QueryCompletedEventData'
+          answer.completed: '#/components/schemas/AnswerCompletedEventData'
+          execution.completed: '#/components/schemas/ExecutionCompletedEventData'
+          execution.failed: '#/components/schemas/ExecutionFailedEventData'
+          execution.cancelled: '#/components/schemas/ExecutionCancelledEventData'
+    ExecutionStartedEventData:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [execution.started]}
+    ClarificationRequiredEventData:
+      type: object
+      required: [kind, clarification]
+      properties:
+        kind: {type: string, enum: [clarification.required]}
+        clarification: {$ref: '#/components/schemas/ClarificationRequest'}
+    SchemaSelectedEventData:
+      type: object
+      required: [kind, selectedObjects]
+      properties:
+        kind: {type: string, enum: [schema.selected]}
+        selectedObjects: {type: array, items: {type: string}}
+    SqlGeneratedEventData:
+      type: object
+      required: [kind, sqlAvailable]
+      properties:
+        kind: {type: string, enum: [sql.generated]}
+        sqlAvailable: {type: boolean}
+    SqlValidatedEventData:
+      type: object
+      required: [kind, sqlValidationStatus, ruleVersion]
+      properties:
+        kind: {type: string, enum: [sql.validated]}
+        sqlValidationStatus: {$ref: '#/components/schemas/SqlValidationStatus'}
+        ruleVersion: {type: string}
+    QueryCompletedEventData:
+      type: object
+      required: [kind, rowCount, truncated]
+      properties:
+        kind: {type: string, enum: [query.completed]}
+        rowCount: {type: integer, minimum: 0}
+        truncated: {type: boolean}
+    AnswerCompletedEventData:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [answer.completed]}
+        assistantMessageId: {type: string, format: uuid, nullable: true}
+    ExecutionCompletedEventData:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [execution.completed]}
+        assistantMessageId: {type: string, format: uuid, nullable: true}
+    ExecutionFailedEventData:
+      type: object
+      required: [kind, error]
+      properties:
+        kind: {type: string, enum: [execution.failed]}
+        error: {$ref: '#/components/schemas/ErrorDetail'}
+    ExecutionCancelledEventData:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [execution.cancelled]}
+        reason: {type: string, nullable: true}
+    ExecutionStatusResponse:
+      type: object
+      required: [executionId, status, updatedAt]
+      properties:
+        executionId: {type: string, format: uuid}
+        status: {$ref: '#/components/schemas/ExecutionStatus'}
+        updatedAt: {type: string, format: date-time}
+
+    ResultColumn:
+      type: object
+      required: [key, label, dataType]
+      properties:
+        key: {type: string}
+        label: {type: string}
+        dataType: {type: string, enum: [string, integer, decimal, percent, date, datetime, boolean]}
+        unit: {type: string, nullable: true}
+    ResultValue:
+      oneOf:
+        - {type: string, nullable: true}
+        - {type: number}
+        - {type: boolean}
+    ResultSet:
+      type: object
+      required: [columns, rows, rowCount, truncated]
+      properties:
+        columns: {type: array, items: {$ref: '#/components/schemas/ResultColumn'}}
+        rows:
+          type: array
+          items:
+            type: object
+            additionalProperties: {$ref: '#/components/schemas/ResultValue'}
+        rowCount: {type: integer, minimum: 0}
+        truncated: {type: boolean}
+    ChartType: {type: string, enum: [bar, line, pie, metric, none]}
+    ChartSpec:
+      type: object
+      required: [type]
+      properties:
+        type: {$ref: '#/components/schemas/ChartType'}
+        title: {type: string, nullable: true}
+        xField: {type: string, nullable: true}
+        yFields: {type: array, items: {type: string}}
+        nameField: {type: string, nullable: true}
+        valueField: {type: string, nullable: true}
+        unit: {type: string, nullable: true}
+    ExecutionDetail:
+      type: object
+      required: [id, requestId, sessionId, userMessageId, question, missingSlots, clarificationRound, dataSourceIds, status, sqlValidationStatus, steps, result, chart, tokenUsage, error, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        requestId: {type: string}
+        sessionId: {type: string, format: uuid}
+        userMessageId: {type: string, format: uuid}
+        assistantMessageId: {type: string, format: uuid, nullable: true}
+        question: {type: string}
+        intent:
+          allOf: [{$ref: '#/components/schemas/IntentType'}]
+          nullable: true
+        normalizedQuestion: {type: string, nullable: true}
+        missingSlots: {type: array, items: {type: string}}
+        clarificationRound: {type: integer, minimum: 0, maximum: 2}
+        clarification:
+          allOf: [{$ref: '#/components/schemas/ClarificationRequest'}]
+          nullable: true
+        dataSourceIds: {type: array, items: {type: string, format: uuid}}
+        status: {$ref: '#/components/schemas/ExecutionStatus'}
+        sqlValidationStatus: {$ref: '#/components/schemas/SqlValidationStatus'}
+        steps: {type: array, items: {$ref: '#/components/schemas/ExecutionStep'}}
+        selectedObjects: {type: array, items: {type: string}}
+        sql: {type: string, nullable: true}
+        result:
+          allOf: [{$ref: '#/components/schemas/ResultSet'}]
+          nullable: true
+          description: 查询完成后为结果集；查询尚未完成或执行失败时为 null。
+        answer: {type: string, nullable: true}
+        chart:
+          allOf: [{$ref: '#/components/schemas/ChartSpec'}]
+          nullable: true
+          description: 回答完成且生成了有效图表建议时存在，否则为 null。
+        followUpQuestions: {type: array, maxItems: 3, items: {type: string}}
+        modelName: {type: string, nullable: true}
+        tokenUsage: {$ref: '#/components/schemas/TokenUsage'}
+        currentVersionNo: {type: integer, minimum: 1, nullable: true}
+        durationMs: {type: integer, minimum: 0, nullable: true}
+        error:
+          allOf: [{$ref: '#/components/schemas/ErrorDetail'}]
+          nullable: true
+          description: failed 或 rejected 时为脱敏错误；其他状态通常为 null。
+        createdAt: {type: string, format: date-time}
+        completedAt: {type: string, format: date-time, nullable: true}
+
+    AnswerVersion:
+      type: object
+      required: [versionNo, executionId, answer, isCurrent, createdAt]
+      properties:
+        versionNo: {type: integer, minimum: 1}
+        executionId: {type: string, format: uuid}
+        answer: {type: string}
+        sql: {type: string, nullable: true}
+        chart: {$ref: '#/components/schemas/ChartSpec'}
+        modelName: {type: string, nullable: true}
+        durationMs: {type: integer, minimum: 0, nullable: true}
+        isCurrent: {type: boolean}
+        createdAt: {type: string, format: date-time}
+
+    FrequentQuestion:
+      type: object
+      required: [question, count, lastAskedAt]
+      properties:
+        question: {type: string}
+        count: {type: integer, minimum: 1}
+        lastAskedAt: {type: string, format: date-time}
+    FavoriteCreate:
+      type: object
+      required: [question]
+      properties:
+        question: {type: string, minLength: 1, maxLength: 2000}
+        sourceMessageId: {type: string, format: uuid, nullable: true}
+    FavoriteQuestion:
+      type: object
+      required: [id, question, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        question: {type: string}
+        sourceMessageId: {type: string, format: uuid, nullable: true}
+        createdAt: {type: string, format: date-time}
+
+    ModelProvider: {type: string, enum: [openai_compatible]}
+    ModelProtocol: {type: string, enum: [responses, chat_completions]}
+    ModelConfigCreate:
+      type: object
+      required: [name, provider, protocol, baseUrl, modelName, apiKey, timeoutSeconds, enabled]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 50}
+        provider: {$ref: '#/components/schemas/ModelProvider'}
+        protocol: {$ref: '#/components/schemas/ModelProtocol'}
+        baseUrl: {type: string, format: uri, maxLength: 500}
+        modelName: {type: string, minLength: 1, maxLength: 100}
+        apiKey: {type: string, minLength: 1, writeOnly: true}
+        timeoutSeconds: {type: integer, minimum: 1, maximum: 120, default: 30}
+        enabled: {type: boolean, default: true}
+    ModelConfigUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        name: {type: string, minLength: 1, maxLength: 50}
+        protocol: {$ref: '#/components/schemas/ModelProtocol'}
+        baseUrl: {type: string, format: uri, maxLength: 500}
+        modelName: {type: string, minLength: 1, maxLength: 100}
+        apiKey: {type: string, minLength: 1, writeOnly: true}
+        timeoutSeconds: {type: integer, minimum: 1, maximum: 120}
+        enabled: {type: boolean}
+    ModelConfig:
+      type: object
+      required: [id, name, provider, protocol, baseUrl, modelName, apiKeyMask, timeoutSeconds, enabled, isActive, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        provider: {$ref: '#/components/schemas/ModelProvider'}
+        protocol: {$ref: '#/components/schemas/ModelProtocol'}
+        baseUrl: {type: string, format: uri}
+        modelName: {type: string}
+        apiKeyMask: {type: string, readOnly: true, example: 'sk-****abcd'}
+        timeoutSeconds: {type: integer}
+        enabled: {type: boolean}
+        isActive: {type: boolean}
+        lastTestStatus: {type: string, enum: [success, failed, timeout], nullable: true}
+        lastTestedAt: {type: string, format: date-time, nullable: true}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ModelConnectionTestRequest:
+      type: object
+      properties:
+        modelConfigId: {type: string, format: uuid, nullable: true}
+        provider: {$ref: '#/components/schemas/ModelProvider'}
+        protocol: {$ref: '#/components/schemas/ModelProtocol'}
+        baseUrl: {type: string, format: uri, nullable: true}
+        modelName: {type: string, minLength: 1, maxLength: 100, nullable: true}
+        apiKey: {type: string, writeOnly: true, nullable: true}
+        timeoutSeconds: {type: integer, minimum: 1, maximum: 30, default: 10}
+      description: modelConfigId 与完整未保存配置二选一。
+    ModelConnectionTestResult:
+      type: object
+      required: [success, status, message, durationMs]
+      properties:
+        success: {type: boolean}
+        status: {type: string, enum: [success, auth_failed, model_not_found, timeout, unavailable, invalid_config, invalid_response]}
+        message: {type: string}
+        durationMs: {type: integer, minimum: 0}
+
+    ApplicationConfig:
+      type: object
+      required: [greetingEnabled, greetingText, recommendedQuestions, followUpEnabled, frequentQuestionsEnabled, frequentQuestionThreshold, modelQaEnabled, ttsEnabled, sttEnabled, version, updatedAt]
+      properties:
+        greetingEnabled: {type: boolean}
+        greetingText: {type: string, maxLength: 1000}
+        recommendedQuestions: {type: array, maxItems: 10, items: {type: string, minLength: 1, maxLength: 100}}
+        followUpEnabled: {type: boolean}
+        frequentQuestionsEnabled: {type: boolean}
+        frequentQuestionThreshold: {type: integer, minimum: 1, maximum: 1000}
+        modelQaEnabled: {type: boolean}
+        ttsEnabled: {type: boolean}
+        sttEnabled: {type: boolean}
+        version: {type: integer, minimum: 1}
+        updatedAt: {type: string, format: date-time}
+    ApplicationConfigUpdate:
+      type: object
+      required: [greetingEnabled, greetingText, recommendedQuestions, followUpEnabled, frequentQuestionsEnabled, frequentQuestionThreshold, modelQaEnabled, ttsEnabled, sttEnabled, version]
+      properties:
+        greetingEnabled: {type: boolean}
+        greetingText: {type: string, maxLength: 1000}
+        recommendedQuestions: {type: array, maxItems: 10, items: {type: string, minLength: 1, maxLength: 100}}
+        followUpEnabled: {type: boolean}
+        frequentQuestionsEnabled: {type: boolean}
+        frequentQuestionThreshold: {type: integer, minimum: 1, maximum: 1000}
+        modelQaEnabled: {type: boolean}
+        ttsEnabled: {type: boolean}
+        sttEnabled: {type: boolean}
+        version: {type: integer, minimum: 1}
+
+    FeedbackReason: {type: string, enum: [sql_error, result_error, metric_error, answer_error, other]}
+    FeedbackStatus: {type: string, enum: [pending, processing, resolved, ignored]}
+    FeedbackCreate:
+      type: object
+      required: [sessionId, assistantMessageId, executionId, reason]
+      properties:
+        sessionId: {type: string, format: uuid}
+        assistantMessageId: {type: string, format: uuid}
+        executionId: {type: string, format: uuid}
+        reason: {$ref: '#/components/schemas/FeedbackReason'}
+        description: {type: string, maxLength: 500, nullable: true}
+    FeedbackUpdate:
+      type: object
+      required: [status, version]
+      properties:
+        status: {$ref: '#/components/schemas/FeedbackStatus'}
+        resolutionNote: {type: string, maxLength: 2000, nullable: true}
+        version: {type: integer, minimum: 1}
+    FeedbackSummary:
+      type: object
+      required: [id, userId, question, reason, status, version, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        userId: {type: string, maxLength: 64}
+        question: {type: string}
+        reason: {$ref: '#/components/schemas/FeedbackReason'}
+        description: {type: string, nullable: true}
+        status: {$ref: '#/components/schemas/FeedbackStatus'}
+        version: {type: integer, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    FeedbackDetail:
+      allOf:
+        - {$ref: '#/components/schemas/FeedbackSummary'}
+        - type: object
+          required: [sessionId, assistantMessageId, executionId, answer]
+          properties:
+            sessionId: {type: string, format: uuid}
+            assistantMessageId: {type: string, format: uuid}
+            executionId: {type: string, format: uuid}
+            dataSourceNames: {type: array, items: {type: string}}
+            sql: {type: string, nullable: true}
+            resultSummary: {type: string, nullable: true}
+            modelName: {type: string, nullable: true}
+            answer: {type: string}
+            resolutionNote: {type: string, nullable: true}
+    FeedbackListResponse:
+      type: object
+      required: [items, page]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/FeedbackSummary'}}
+        page: {$ref: '#/components/schemas/PageMeta'}
+
+    QaLogSummary:
+      type: object
+      required: [executionId, userId, requestId, question, status, createdAt]
+      properties:
+        executionId: {type: string, format: uuid}
+        userId: {type: string, maxLength: 64}
+        requestId: {type: string}
+        question: {type: string}
+        status: {$ref: '#/components/schemas/ExecutionStatus'}
+        modelName: {type: string, nullable: true}
+        rowCount: {type: integer, minimum: 0, nullable: true}
+        durationMs: {type: integer, minimum: 0, nullable: true}
+        errorCode: {type: string, nullable: true}
+        createdAt: {type: string, format: date-time}
+    QaLogDetail:
+      allOf:
+        - {$ref: '#/components/schemas/QaLogSummary'}
+        - type: object
+          required: [sessionId, userMessageId, intent, normalizedQuestion, missingSlots, clarificationRound, dataSourceNames, selectedObjects, modelCalls, graphVersion, graphNodeTrace, checkpointStatus, ragDocumentIds, ragDegraded, steps]
+          properties:
+            sessionId: {type: string, format: uuid}
+            userMessageId: {type: string, format: uuid}
+            assistantMessageId: {type: string, format: uuid, nullable: true}
+            intent:
+              allOf: [{$ref: '#/components/schemas/IntentType'}]
+              nullable: true
+            normalizedQuestion: {type: string, nullable: true}
+            missingSlots: {type: array, items: {type: string}}
+            clarificationRound: {type: integer, minimum: 0, maximum: 2}
+            dataSourceNames: {type: array, items: {type: string}}
+            selectedObjects: {type: array, items: {type: string}}
+            generatedSql: {type: string, nullable: true}
+            executedSql: {type: string, nullable: true}
+            validationSummary: {type: string, nullable: true}
+            tokenUsage: {$ref: '#/components/schemas/TokenUsage'}
+            modelCalls: {type: array, items: {$ref: '#/components/schemas/ModelCallAudit'}}
+            graphVersion: {type: string, nullable: true}
+            graphNodeTrace: {type: array, items: {type: string}}
+            checkpointStatus: {type: string, nullable: true}
+            ragDocumentIds: {type: array, items: {type: string, format: uuid}}
+            ragDegraded: {type: boolean}
+            steps: {type: array, items: {$ref: '#/components/schemas/ExecutionStep'}}
+            errorMessage: {type: string, nullable: true}
+    QaLogListResponse:
+      type: object
+      required: [items, page]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/QaLogSummary'}}
+        page: {$ref: '#/components/schemas/PageMeta'}
+    TokenUsage:
+      type: object
+      required: [promptTokens, completionTokens, totalTokens]
+      properties:
+        promptTokens: {type: integer, minimum: 0}
+        completionTokens: {type: integer, minimum: 0}
+        totalTokens: {type: integer, minimum: 0}
+    ModelCallAudit:
+      type: object
+      required: [provider, model, purpose, durationMs, promptTokens, completionTokens, totalTokens, retryCount, status, errorCode]
+      properties:
+        provider: {type: string}
+        model: {type: string}
+        purpose: {type: string, enum: [intent_classification, sql_generation, sql_correction, answer_generation]}
+        durationMs: {type: integer, minimum: 0}
+        promptTokens: {type: integer, minimum: 0}
+        completionTokens: {type: integer, minimum: 0}
+        totalTokens: {type: integer, minimum: 0}
+        retryCount: {type: integer, minimum: 0, maximum: 2}
+        status: {type: string, enum: [success, failed, invalid_output]}
+        errorCode: {type: string, nullable: true}
+
+    HealthResponse:
+      type: object
+      required: [status, service, timestamp, checks]
+      properties:
+        status: {type: string, enum: [ok, degraded, unavailable]}
+        service: {type: string, example: backend}
+        version: {type: string}
+        timestamp: {type: string, format: date-time}
+        checks:
+          type: object
+          additionalProperties: {type: string, enum: [ok, unavailable]}

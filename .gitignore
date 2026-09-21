@@ -1,0 +1,46 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.prod.example
+/secrets/*
+!/secrets/README.md
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.prod.example
+
+# JavaScript
+**/node_modules/
+**/dist/
+**/coverage/
+**/playwright-report/
+**/test-results/
+.vite/
+.chart-data-*/
+
+# Python
+**/.venv/
+**/.runtime/
+**/__pycache__/
+**/.mypy_cache/
+**/.pytest_cache/
+**/.ruff_cache/
+**/*.py[cod]
+**/.coverage
+**/htmlcov/
+
+# IDE and operating system
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Runtime output
+*.log
+*.pid
+backups/
+
+# Historical/generated demo assets are kept outside the product baseline.
+/docs/02-demo/

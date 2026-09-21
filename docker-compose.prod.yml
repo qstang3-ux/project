@@ -1,0 +1,169 @@
+name: management-star-prod
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-backend-service: &backend-service
+  image: management-star-backend:${APP_VERSION:-latest}
+  build:
+    context: ./backend
+  entrypoint: ["/usr/local/bin/production-entrypoint"]
+  environment:
+    APP_ENV: prod
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    POSTGRES_DB: ${POSTGRES_DB:-management_star}
+    POSTGRES_USER: ${POSTGRES_USER:-migration_owner}
+    DATABASE_HOST: postgres
+    DATABASE_PORT: "5432"
+    DEFAULT_MODEL_CONFIG: real
+    RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-BAAI/bge-small-zh-v1.5}
+    REAL_MODEL_TIMEOUT_SECONDS: ${REAL_MODEL_TIMEOUT_SECONDS:-60}
+  secrets:
+    - postgres_password
+    - app_rw_password
+    - text2sql_ro_password
+    - model_secret_key
+  logging: *default-logging
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-management_star}
+      POSTGRES_USER: ${POSTGRES_USER:-migration_owner}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+      - app_rw_password
+      - text2sql_ro_password
+    volumes:
+      - management-star-postgres:/var/lib/postgresql/data
+      - ./backend/docker/postgres/init-roles-prod.sh:/docker-entrypoint-initdb.d/01-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+    logging: *default-logging
+
+  migrate:
+    <<: *backend-service
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  seed-demo:
+    <<: *backend-service
+    profiles: ["demo-data"]
+    command: ["python", "-m", "app.seed", "--seed", "20260915"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  rag-index:
+    <<: *backend-service
+    command: ["python", "scripts/build_rag_index.py"]
+    volumes:
+      - management-star-huggingface:/home/app/.cache/huggingface
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+
+  backend:
+    <<: *backend-service
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    restart: unless-stopped
+    volumes:
+      - management-star-huggingface:/home/app/.cache/huggingface
+    depends_on:
+      rag-index:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 6G
+
+  frontend:
+    image: management-star-frontend:${APP_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging: *default-logging
+
+  gateway:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - management-star-caddy-data:/data
+      - management-star-caddy-config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging: *default-logging
+
+volumes:
+  management-star-postgres:
+  management-star-huggingface:
+  management-star-caddy-data:
+  management-star-caddy-config:
+
+secrets:
+  postgres_password:
+    file: ${SECRETS_DIR:-./secrets}/postgres_password.txt
+  app_rw_password:
+    file: ${SECRETS_DIR:-./secrets}/app_rw_password.txt
+  text2sql_ro_password:
+    file: ${SECRETS_DIR:-./secrets}/text2sql_ro_password.txt
+  model_secret_key:
+    file: ${SECRETS_DIR:-./secrets}/model_secret_key.txt
