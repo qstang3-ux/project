@@ -33,6 +33,8 @@
       background: var(--bg);
       font: 14px/1.7 Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
     }
+    .reading-progress { position: fixed; inset: 0 0 auto 0; z-index: 50; height: 3px; background: transparent; }
+    .reading-progress span { display: block; width: 0; height: 100%; background: linear-gradient(90deg, #38bdf8, #2563eb); transition: width .08s linear; }
     button { font: inherit; }
     .shell { display: grid; grid-template-columns: 264px minmax(0, 1fr); min-height: 100vh; }
     aside {
@@ -55,28 +57,22 @@
     nav a::before { content: attr(data-no); width: 24px; color: #7085ab; font-size: 11px; }
     nav a:hover, nav a.active { color: white; background: rgba(255,255,255,.09); }
     nav a.active::before { color: #72d7ff; }
+    .nav-group + .nav-group { margin-top: 17px; }
+    .nav-label { margin: 0 11px 6px; color: #60769d; font-size: 11px; font-weight: 800; letter-spacing: .12em; }
+    .content { display: flex; flex-direction: column; }
+    #overview { order: 1; }
+    #requirements { order: 2; }
+    #database { order: 3; }
+    #architecture { order: 4; }
+    #frontend { order: 5; }
+    #backend { order: 6; }
+    #code-map { order: 7; }
+    #tests { order: 8; }
+    #review { order: 9; }
+    #delivery { order: 10; }
+    #documents { order: 11; }
     .aside-note { margin: 26px 8px 0; padding: 14px; color: #91a4c5; font-size: 12px; border: 1px solid #263857; border-radius: 12px; }
     main { min-width: 0; }
-    .hero {
-      position: relative; overflow: hidden; padding: 64px clamp(28px, 5vw, 76px) 56px;
-      color: white; background:
-        radial-gradient(circle at 80% 10%, rgba(34,211,238,.28), transparent 28%),
-        radial-gradient(circle at 65% 100%, rgba(99,102,241,.24), transparent 32%),
-        linear-gradient(135deg, #14233e 0%, #173e79 60%, #075985 100%);
-    }
-    .hero::after { content: ""; position: absolute; inset: 0; opacity: .16; background-image: linear-gradient(rgba(255,255,255,.2) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.2) 1px, transparent 1px); background-size: 44px 44px; mask-image: linear-gradient(to left, #000, transparent 72%); }
-    .hero > * { position: relative; z-index: 1; }
-    .eyebrow { color: #8de3ff; font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
-    h1 { max-width: 840px; margin: 10px 0 12px; font-size: clamp(32px, 5vw, 56px); line-height: 1.12; letter-spacing: -.04em; }
-    .hero p { max-width: 780px; margin: 0; color: #d6e4fb; font-size: 16px; }
-    .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
-    .btn { border: 0; border-radius: 10px; padding: 9px 14px; cursor: pointer; }
-    .btn-primary { color: #0f2b4f; background: #fff; font-weight: 700; }
-    .btn-ghost { color: #fff; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.22); }
-    .hero-metrics { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 12px; max-width: 900px; margin-top: 34px; }
-    .hero-metric { padding: 14px 16px; border: 1px solid rgba(255,255,255,.16); border-radius: 14px; background: rgba(255,255,255,.08); backdrop-filter: blur(10px); }
-    .hero-metric b { display: block; font-size: 23px; }
-    .hero-metric span { color: #c7d7ef; font-size: 12px; }
     .content { max-width: 1500px; margin: 0 auto; padding: 34px clamp(22px, 4vw, 64px) 80px; }
     section { scroll-margin-top: 18px; margin-bottom: 30px; padding: 28px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
     .section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
@@ -101,6 +97,7 @@
     li + li { margin-top: 4px; }
     code { padding: 2px 6px; color: #254784; background: #eef4ff; border-radius: 6px; font: 12px/1.5 Consolas, monospace; }
     pre { overflow: auto; margin: 12px 0; padding: 16px; color: #dbeafe; background: #101827; border-radius: 13px; font: 12px/1.65 Consolas, monospace; }
+    pre > code { padding: 0; color: inherit; background: transparent; border-radius: 0; font: inherit; }
     table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 12px 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
     th, td { padding: 10px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
     th { color: #344054; background: #f3f6fa; font-size: 12px; }
@@ -133,30 +130,90 @@
     .finding.p2 { border-left-color: var(--brand); background: #f5f9ff; }
     .callout { margin-top: 16px; padding: 15px 17px; color: #294a78; background: #eef6ff; border: 1px solid #cfe2fb; border-radius: 12px; }
     .source { margin-top: 18px; color: #7a879a; font-size: 12px; }
-    .source a { color: #4c6fa5; }
+    .source a, .file-link { color: #315f9f; text-decoration: none; border-bottom: 1px dashed #9bb5d7; }
+    .source a:hover, .file-link:hover { color: var(--brand); border-bottom-style: solid; }
+    .code-path { display: grid; gap: 10px; counter-reset: code-step; }
+    .code-path-item { position: relative; display: grid; grid-template-columns: 34px minmax(190px, .8fr) 1.6fr; align-items: start; gap: 12px; padding: 13px 15px; border: 1px solid var(--line); border-radius: 12px; background: #fbfdff; }
+    .code-path-item::before { counter-increment: code-step; content: counter(code-step); display: grid; place-items: center; width: 27px; height: 27px; color: white; background: var(--brand); border-radius: 8px; font-size: 12px; font-weight: 800; }
+    .code-path-item b { display: block; margin-bottom: 2px; }
+    .code-path-item p { margin: 0; color: var(--muted); }
+    .decision { padding: 15px 17px; border: 1px solid #c9eadb; border-radius: 12px; background: #effaf5; }
+    .decision strong { color: #06734d; }
+    .doc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .doc-group { padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfdff; }
+    .doc-group h3 { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 0; }
+    .doc-list { display: grid; gap: 8px; }
+    .doc-item { display: grid; grid-template-columns: minmax(150px, .75fr) 1.45fr; gap: 12px; align-items: baseline; padding: 9px 0; border-top: 1px dashed #dce5f0; }
+    .doc-item:first-child { border-top: 0; padding-top: 0; }
+    .doc-item a { width: fit-content; color: #2459a6; font-weight: 700; text-decoration: none; }
+    .doc-item a:hover { text-decoration: underline; }
+    .doc-item span { color: var(--muted); font-size: 12px; }
+    .artifact-strip { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-top: 12px; }
+    .artifact { padding: 13px; border: 1px solid #d8e4f3; border-radius: 12px; background: #f6f9fe; }
+    .artifact b { display: block; margin-bottom: 4px; color: #244d88; }
+    .artifact a { color: inherit; text-decoration: none; }
+    .artifact small { color: var(--muted); }
+    body.preview-open { overflow: hidden; }
+    .preview-overlay { position: fixed; inset: 0; z-index: 100; display: none; align-items: center; justify-content: center; padding: 6px; background: rgba(9, 18, 35, .62); backdrop-filter: blur(5px); }
+    .preview-overlay.open { display: flex; }
+    .preview-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(1800px, calc(100vw - 12px)); height: 97vh; overflow: hidden; border: 1px solid #d9e2ef; border-radius: 12px; background: white; box-shadow: 0 28px 80px rgba(5, 15, 35, .28); }
+    .preview-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 15px 18px; border-bottom: 1px solid var(--line); background: #f8fafc; }
+    .preview-title { min-width: 0; }
+    .preview-title b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+    .preview-title span { display: block; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .preview-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    .preview-actions a, .preview-actions button { padding: 7px 11px; border: 1px solid #d3deed; border-radius: 9px; color: #315f9f; background: white; font: inherit; text-decoration: none; cursor: pointer; }
+    .preview-actions button { width: 34px; padding-inline: 0; color: #667085; font-size: 18px; }
+    .preview-content { overflow: auto; padding: 28px clamp(20px, 4vw, 54px) 54px; color: #263244; }
+    .preview-content > :first-child { margin-top: 0; }
+    .preview-content h1 { margin: 0 0 18px; padding-bottom: 12px; border-bottom: 1px solid var(--line); font-size: 30px; line-height: 1.3; letter-spacing: -.02em; }
+    .preview-content h2 { margin-top: 30px; padding-bottom: 7px; border-bottom: 1px solid #edf1f6; font-size: 22px; }
+    .preview-content h3 { margin-top: 24px; font-size: 17px; }
+    .preview-content h4 { margin-top: 20px; }
+    .preview-content p { margin: 10px 0; }
+    .preview-content blockquote { margin: 14px 0; padding: 11px 15px; color: #52647d; border-left: 4px solid #8bb4ec; background: #f5f9ff; }
+    .preview-content pre { max-height: none; white-space: pre; }
+    .preview-content table { font-size: 13px; }
+    .preview-content img { display: block; max-width: 100%; height: auto; margin: 16px auto; border: 1px solid var(--line); border-radius: 10px; }
+    .preview-content a { color: var(--brand); }
+    .preview-loading { display: grid; place-items: center; min-height: 320px; color: var(--muted); }
+    .preview-error { padding: 18px; color: #a33b31; border: 1px solid #f0cbc7; border-radius: 12px; background: #fff5f4; }
+    .back-top { position: fixed; right: 22px; bottom: 22px; z-index: 20; width: 42px; height: 42px; border: 1px solid #cbd8ea; border-radius: 50%; color: var(--brand); background: rgba(255,255,255,.94); box-shadow: var(--shadow); cursor: pointer; opacity: 0; pointer-events: none; transform: translateY(8px); transition: .2s ease; }
+    .back-top.visible { opacity: 1; pointer-events: auto; transform: none; }
     footer { padding: 30px; color: #667085; text-align: center; }
     @media (max-width: 1000px) {
       .shell { grid-template-columns: 1fr; }
       aside { position: relative; height: auto; }
       nav { display: flex; gap: 4px; overflow-x: auto; }
+      .nav-group { display: flex; gap: 4px; }
+      .nav-group + .nav-group { margin-top: 0; }
+      .nav-label { display: none; }
       nav a { white-space: nowrap; }
-      .hero-metrics, .g4 { grid-template-columns: repeat(2, 1fr); }
+      .g4 { grid-template-columns: repeat(2, 1fr); }
       .g3 { grid-template-columns: repeat(2, 1fr); }
+      .artifact-strip { grid-template-columns: repeat(2, 1fr); }
     }
     @media (max-width: 680px) {
       section { padding: 20px; }
-      .g2, .g3, .g4, .hero-metrics { grid-template-columns: 1fr; }
+      .g2, .g3, .g4 { grid-template-columns: 1fr; }
+      .doc-grid, .artifact-strip { grid-template-columns: 1fr; }
+      .doc-item { grid-template-columns: 1fr; gap: 2px; }
+      .preview-overlay { padding: 0; }
+      .preview-panel { width: 100vw; height: 100vh; border-radius: 0; }
+      .preview-head { padding: 12px; }
+      .preview-actions a { display: none; }
       .layer { grid-template-columns: 1fr; }
       .layer-name { place-items: start; }
       .status-row { grid-template-columns: 24px 1fr; }
       .status-row > :nth-child(3), .status-row > :nth-child(4) { grid-column: 2; }
+      .code-path-item { grid-template-columns: 32px 1fr; }
+      .code-path-item p { grid-column: 2; }
+      table { display: block; overflow-x: auto; white-space: normal; }
     }
     @media print {
       body { background: white; font-size: 11px; }
       .shell { display: block; }
-      aside, .hero-actions { display: none; }
-      .hero { padding: 28px; print-color-adjust: exact; }
-      .hero h1 { font-size: 34px; }
+      aside, .reading-progress, .back-top, .preview-overlay { display: none; }
       .content { max-width: none; padding: 18px 0; }
       section { break-inside: avoid; margin: 0 0 14px; padding: 18px; box-shadow: none; }
       .flow { overflow: visible; }
@@ -165,43 +222,42 @@
   </style>
 </head>
 <body>
+<div class="reading-progress" aria-hidden="true"><span></span></div>
 <div class="shell">
   <aside>
     <div class="brand"><div class="brand-mark">经</div><div><strong>经管之星</strong><span>项目全景文档</span></div></div>
-    <nav>
-      <a href="#overview" data-no="01">项目总览</a>
-      <a href="#requirements" data-no="02">项目需求</a>
-      <a href="#architecture" data-no="03">总体架构</a>
-      <a href="#frontend" data-no="04">前端设计</a>
-      <a href="#backend" data-no="05">后端与 Agent</a>
-      <a href="#database" data-no="06">数据库设计</a>
-      <a href="#review" data-no="07">Code Review</a>
-      <a href="#tests" data-no="08">测试报告</a>
-      <a href="#delivery" data-no="09">交付状态</a>
+    <nav aria-label="项目文档目录">
+      <div class="nav-group">
+        <div class="nav-label">项目认知</div>
+        <a href="#overview" data-no="01">项目总览</a>
+        <a href="#requirements" data-no="02">项目需求</a>
+        <a href="#database" data-no="03">业务与数据设计</a>
+        <a href="#architecture" data-no="04">总体架构</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">设计与实现</div>
+        <a href="#frontend" data-no="05">前端设计</a>
+        <a href="#backend" data-no="06">后端与 Agent</a>
+        <a href="#code-map" data-no="07">核心实现导览</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">质量与交付</div>
+        <a href="#tests" data-no="08">测试报告</a>
+        <a href="#review" data-no="09">Code Review</a>
+        <a href="#delivery" data-no="10">交付状态</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">文档附录</div>
+        <a href="#documents" data-no="11">文档与产出</a>
+      </div>
     </nav>
-    <div class="aside-note">单文件、无外部依赖。可直接离线打开，也可使用浏览器“打印”为 PDF。</div>
+    <div class="aside-note">请通过项目本地 HTTP 服务打开，以使用详细文档预览；也可使用浏览器“打印”为 PDF。</div>
   </aside>
 
   <main>
-    <header class="hero">
-      <div class="eyebrow">Management Intelligence · Technical Review</div>
-      <h1>从自然语言到可信经营数据结论</h1>
-      <p>React + FastAPI + PostgreSQL 的智能问数平台。通过 LangGraph、向量 RAG、受控 Text2SQL、只读数据库权限和可重放 SSE，形成可查询、可解释、可审计、可恢复的完整 Agent 工程闭环。</p>
-      <div class="hero-actions">
-        <button class="btn btn-primary" onclick="window.print()">打印 / 导出 PDF</button>
-        <button class="btn btn-ghost" onclick="document.querySelector('#architecture').scrollIntoView()">查看架构</button>
-      </div>
-      <div class="hero-metrics">
-        <div class="hero-metric"><b>8 / 8</b><span>真实模型核心问数</span></div>
-        <div class="hero-metric"><b>5 / 5</b><span>危险请求安全拒绝</span></div>
-        <div class="hero-metric"><b>Recall@5 1.0</b><span>30 条 RAG 评测</span></div>
-        <div class="hero-metric"><b>REST + SSE</b><span>接口与实时状态通道</span></div>
-      </div>
-    </header>
-
     <div class="content">
       <section id="overview">
-        <div class="section-head"><div><h2><span class="section-no">01</span>项目总览</h2><p class="muted">面向经营分析人员的自然语言问数与审计平台</p></div><span class="tag ok">核心链路已实现</span></div>
+        <div class="section-head"><div><h2><span class="section-no">01</span>项目总览</h2><p class="muted">面向经营分析人员的自然语言问数与审计平台</p></div><span class="tag ok">2026-09-21 已校准</span></div>
         <div class="grid g4">
           <div class="card"><strong class="big">React</strong><span>类型安全 SPA、响应式问答、表格图表联动</span></div>
           <div class="card"><strong class="big">FastAPI</strong><span>契约驱动 API、统一错误、幂等和审计</span></div>
@@ -214,6 +270,146 @@
           <div class="card"><h4>可解释</h4><p>展示规范化问题、查询对象、执行步骤、SQL、结果表格、图表及业务结论。</p></div>
           <div class="card"><h4>可审计</h4><p>Request ID、Token、模型调用、RAG 文档、节点轨迹、checkpoint、版本与反馈均可追溯。</p></div>
         </div>
+        <div class="callout"><strong>一句话理解：</strong>它不是让大模型自由查询数据库，而是让模型负责“理解问题和生成候选内容”，由程序负责权限、检索范围、SQL 安全、执行、数字核验、状态恢复和最终审计。</div>
+      </section>
+
+      <section id="documents">
+        <div class="section-head"><div><h2><span class="section-no">11</span>文档与过程产出</h2><p class="muted">本页提供全景概括，以下链接进入需求、设计、开发、测试和交付的完整细节</p></div><span class="tag ok">文档附录</span></div>
+        <div class="callout"><strong>阅读方式：</strong>首次了解按“产品基线 → 总体架构 → 前后端设计 → 数据与 Agent → 测试与 Review”阅读；定位具体问题时直接进入对应专题。过程记录用于解释“为什么这样设计”，正式行为仍以产品范围、OpenAPI、数据库口径和验收标准为准。</div>
+
+        <h3>产品、需求与项目管理</h3>
+        <div class="doc-grid">
+          <div class="doc-group">
+            <h3>产品与验收 <span class="tag">共享基线</span></h3>
+            <div class="doc-list">
+              <div class="doc-item"><a href="00-shared/product-scope.md">产品范围</a><span>P0/P1/P2、目标用户、排除范围和发布成功标准</span></div>
+              <div class="doc-item"><a href="00-shared/acceptance-criteria.md">验收标准</a><span>功能、Agent、数据、安全和部署的验收口径</span></div>
+              <div class="doc-item"><a href="00-shared/pre-development-checklist.md">开发前检查表</a><span>范围、字段、API、环境和安全准备状态</span></div>
+              <div class="doc-item"><a href="../frontend/docs/requirements.md">前端需求</a><span>页面、状态、交互、错误与响应式需求</span></div>
+              <div class="doc-item"><a href="../backend/docs/requirements.md">后端需求</a><span>API、Agent、数据、安全、审计与恢复需求</span></div>
+            </div>
+          </div>
+          <div class="doc-group">
+            <h3>项目过程 <span class="tag">决策可追溯</span></h3>
+            <div class="doc-list">
+              <div class="doc-item"><a href="01-project-management/backlog.md">开发 Backlog</a><span>工作包、优先级、依赖关系和当前状态</span></div>
+              <div class="doc-item"><a href="01-project-management/development-process.md">开发流程</a><span>Ready/Done Gate、分支、提交和变更控制</span></div>
+              <div class="doc-item"><a href="01-project-management/decision-log.md">决策与假设记录</a><span>ADR-001～018 及关键业务假设</span></div>
+              <div class="doc-item"><a href="../frontend/docs/HANDOFF.md">前端交接记录</a><span>前端已完成事项、运行方式和遗留说明</span></div>
+              <div class="doc-item"><a href="../backend/docs/HANDOFF.md">后端交接记录</a><span>后端能力、数据库状态、验证与注意事项</span></div>
+            </div>
+          </div>
+        </div>
+
+        <h3>架构、开发与接口设计</h3>
+        <div class="doc-grid">
+          <div class="doc-group">
+            <h3>共享架构与部署 <span class="tag">跨端</span></h3>
+            <div class="doc-list">
+              <div class="doc-item"><a href="00-shared/architecture.md">总体架构</a><span>系统分层、调用链、信任边界和运行拓扑</span></div>
+              <div class="doc-item"><a href="00-shared/deployment-design.md">部署设计</a><span>本地、Docker、生产 Secret、Caddy 与验收步骤</span></div>
+              <div class="doc-item"><a href="00-shared/test-plan.md">测试计划</a><span>测试层次、环境、数据、门禁和发布判定</span></div>
+              <div class="doc-item"><a href="../README.md">仓库使用说明</a><span>项目入口、全栈启动、生产部署和质量门禁</span></div>
+              <div class="doc-item"><a href="README.md">共享文档索引</a><span>根文档目录和独立开发入口</span></div>
+            </div>
+          </div>
+          <div class="doc-group">
+            <h3>前端设计 <span class="tag">React</span></h3>
+            <div class="doc-list">
+              <div class="doc-item"><a href="../frontend/README.md">前端开发入口</a><span>本地运行、边界、顺序和完整门禁</span></div>
+              <div class="doc-item"><a href="../frontend/docs/design.md">前端技术设计</a><span>路由、组件、状态、API、SSE 和异常降级</span></div>
+              <div class="doc-item"><a href="../frontend/docs/ui-design-system.md">UI 设计系统</a><span>布局、颜色、字体、组件和交互规范</span></div>
+              <div class="doc-item"><a href="../frontend/docs/api-issues.md">API 联调问题</a><span>契约差异、联调结论和处理状态</span></div>
+              <div class="doc-item"><a href="../frontend/docs/code-review-map.md">前端代码地图</a><span>目录树、关键组件、调用链和 Review 路线</span></div>
+            </div>
+          </div>
+          <div class="doc-group">
+            <h3>后端与 API <span class="tag">FastAPI</span></h3>
+            <div class="doc-list">
+              <div class="doc-item"><a href="../backend/README.md">后端开发入口</a><span>环境、迁移、Seed、RAG、服务和验证命令</span></div>
+              <div class="doc-item"><a href="../backend/docs/api/openapi.yaml">OpenAPI 契约</a><span>前后端接口字段的唯一事实来源</span></div>
+              <div class="doc-item"><a href="../backend/docs/api/error-codes.md">错误码</a><span>稳定错误码、HTTP 映射和用户提示边界</span></div>
+              <div class="doc-item"><a href="../backend/docs/api/contract-changelog.md">接口变更记录</a><span>契约演进、兼容性与前端同步说明</span></div>
+              <div class="doc-item"><a href="../backend/docs/code-review-map.md">后端代码地图</a><span>分层目录、主链路、可靠性和安全 Review</span></div>
+            </div>
+          </div>
+          <div class="doc-group">
+            <h3>开发规则与入口 <span class="tag">工程治理</span></h3>
+            <div class="doc-list">
+              <div class="doc-item"><a href="../AGENTS.md">仓库开发规则</a><span>范围、目录、架构、安全、测试和协作规则</span></div>
+              <div class="doc-item"><a href="../frontend/AGENTS.md">前端代码规则</a><span>React/TypeScript、API、UI、安全和测试约束</span></div>
+              <div class="doc-item"><a href="../backend/AGENTS.md">后端代码规则</a><span>Python、数据库、Text2SQL、密钥和测试约束</span></div>
+              <div class="doc-item"><a href="../frontend/docs/README.md">前端文档索引</a><span>前端专题文档统一入口</span></div>
+              <div class="doc-item"><a href="../backend/docs/README.md">后端文档索引</a><span>后端专题文档统一入口</span></div>
+            </div>
+          </div>
+        </div>
+
+        <h3>数据库、Agent 与 Text2SQL</h3>
+        <div class="doc-grid">
+          <div class="doc-group">
+            <h3>数据设计 <span class="tag">PostgreSQL</span></h3>
+            <div class="doc-list">
+              <div class="doc-item"><a href="../backend/docs/data/database-design.md">数据库设计</a><span>双 Schema、表关系、角色、迁移和可靠性设计</span></div>
+              <div class="doc-item"><a href="../backend/docs/data/data-dictionary.md">数据字典</a><span>业务表、平台表、字段类型和含义</span></div>
+              <div class="doc-item"><a href="../backend/docs/data/metric-definitions.md">指标口径</a><span>合同额、收入、回款、应收、目标和风险定义</span></div>
+              <div class="doc-item"><a href="../backend/docs/data/seed-spec.md">固定 Seed 规范</a><span>确定性数据规模、分布、日期和验收锚点</span></div>
+              <div class="doc-item"><a href="../backend/docs/data/schema-review-map.md">数据库 Review 地图</a><span>ER 关系、执行聚合根、checkpoint 和视图血缘</span></div>
+            </div>
+          </div>
+          <div class="doc-group">
+            <h3>Agent 工程 <span class="tag">LangGraph + RAG</span></h3>
+            <div class="doc-list">
+              <div class="doc-item"><a href="../backend/docs/text2sql/text2sql-design.md">Text2SQL 设计</a><span>上下文、召回、生成、校验、执行和答案闭环</span></div>
+              <div class="doc-item"><a href="../backend/docs/text2sql/sql-security-policy.md">SQL 安全策略</a><span>AST、对象/列/函数白名单与只读执行限制</span></div>
+              <div class="doc-item"><a href="../backend/docs/text2sql/model-integration.md">模型接入设计</a><span>协议、结构化输出、重试、预算、Token 与密钥</span></div>
+              <div class="doc-item"><a href="../backend/docs/text2sql/langgraph-vector-rag-plan.md">LangGraph/RAG 实施计划</a><span>图编排、checkpoint、pgvector 和实施阶段</span></div>
+              <div class="doc-item"><a href="../backend/docs/text2sql/real-agent-delivery-plan.md">真实 Agent 交付计划</a><span>真实模型工程化、验证批次和验收证据</span></div>
+            </div>
+          </div>
+        </div>
+
+        <h3>测试、Review 与交付证据</h3>
+        <div class="doc-grid">
+          <div class="doc-group">
+            <h3>Code Review <span class="tag">质量结论</span></h3>
+            <div class="doc-list">
+              <div class="doc-item"><a href="03-review/code-review-checklist.md">Review 检查表</a><span>架构、数据、安全、可靠性和前端检查项</span></div>
+              <div class="doc-item"><a href="03-review/code-review-report.md">Code Review 报告</a><span>结论、Findings、证据和发布建议</span></div>
+              <div class="doc-item"><a href="../test/FULL-TEST-REPORT-2026-09-20.md">完整测试报告</a><span>范围、环境、结果、缺陷、风险与 Go 判定</span></div>
+              <div class="doc-item"><a href="../test/TEST-REPORT-2026-09-20.md">测试结论摘要</a><span>主要结果、缺陷闭环和发布建议</span></div>
+              <div class="doc-item"><a href="../test/REAL-MODEL-ACCURACY-REPORT-2026-09-21.md">真实模型准确率专项</a><span>100 题三轮评测、资源消耗、BE-004～BE-011 修复与复验</span></div>
+            </div>
+          </div>
+          <div class="doc-group">
+            <h3>测试过程产出 <span class="tag">可复现</span></h3>
+            <div class="doc-list">
+              <div class="doc-item"><a href="../test/TEST-CASE-DESIGN.md">测试用例设计</a><span>分层策略、编号规则、数据和判定方式</span></div>
+              <div class="doc-item"><a href="../test/TEST-CASES.md">测试用例集</a><span>功能、接口、Agent、RAG、安全与非功能用例</span></div>
+              <div class="doc-item"><a href="../test/TEST-CASE-DETAILED-REPORT-2026-09-20.md">逐用例详细报告</a><span>103 条主用例的步骤、预期、状态和证据</span></div>
+              <div class="doc-item"><a href="../test/TEST-CASE-EXECUTION-REPORT-2026-09-20.md">用例执行明细</a><span>主用例与 76 条评测题的结果索引</span></div>
+              <div class="doc-item"><a href="../test/TEST-EXECUTION-LOG.md">测试执行日志</a><span>执行批次、命令、修复回归和实际输出</span></div>
+              <div class="doc-item"><a href="../test/经管之星-Agent平台测试用例-v1.0.xlsx">测试用例 Excel</a><span>便于筛选、执行和签署的结构化测试资产</span></div>
+            </div>
+          </div>
+        </div>
+
+        <h3>自动化、评测与缺陷证据</h3>
+        <div class="artifact-strip">
+          <div class="artifact"><a href="../.github/workflows/ci.yml"><b>CI 工作流</b><small>前端、后端、覆盖率、E2E、Compose 与镜像门禁</small></a></div>
+          <div class="artifact"><a href="../backend/.runtime/qa-real-model-smoke-20260920-final.json"><b>真实模型核心报告</b><small>8/8 核心问数与 5/5 危险请求</small></a></div>
+          <div class="artifact"><a href="../backend/.runtime/qa-real-model-golden-100x3-20260921-adjusted.json"><b>扩展稳定性评测</b><small>100 题 × 3 轮，279/300 通过，准确率 93%</small></a></div>
+          <div class="artifact"><a href="../backend/.runtime/rag-evaluation-six-fixes-final.json"><b>扩展 RAG 最终评测</b><small>100/100 Top-5 命中，含修复后最终指标</small></a></div>
+          <div class="artifact"><a href="../backend/.runtime/qa-prompt-injection-report-20260920.json"><b>Prompt 安全报告</b><small>多通道注入与正常用例回归证据</small></a></div>
+          <div class="artifact"><a href="../backend/.runtime/ci-coverage-final.json"><b>后端覆盖率报告</b><small>overall、services 与 validator 分层门禁</small></a></div>
+          <div class="artifact"><a href="../test/evidence/BUG-BE-001-model-config-pollution.jpg"><b>缺陷现场证据</b><small>集成测试导致模型激活状态污染</small></a></div>
+          <div class="artifact"><a href="../test/evidence/VERIFY-BE-001-model-config-restored.jpg"><b>修复复验证据</b><small>模型状态恢复与真实问答复验</small></a></div>
+          <div class="artifact"><a href="../test/evidence/BUG-BE-004-entity-normalization.png"><b>实体归一化证据</b><small>真实模型稳定性问题定位产物</small></a></div>
+          <div class="artifact"><a href="../docker-compose.yml"><b>开发 Compose</b><small>PostgreSQL、迁移、Seed、RAG、API 与前端</small></a></div>
+          <div class="artifact"><a href="../docker-compose.prod.yml"><b>生产 Compose</b><small>Secret、独立账号、资源限制与 Caddy</small></a></div>
+          <div class="artifact"><a href="DEMONSTRATION.md"><b>演示资料归档</b><small>唯一独立演示材料，不作为正式需求依据</small></a></div>
+        </div>
+        <p class="source">未纳入索引：服务 stdout/stderr、临时覆盖率中间文件、构建缓存和一次性检查产物；它们不是正式交付文档。模型评测 JSON 均为脱敏证据，不包含 API Key。</p>
       </section>
 
       <section id="requirements">
@@ -243,12 +439,12 @@
       </section>
 
       <section id="architecture">
-        <div class="section-head"><div><h2><span class="section-no">03</span>总体架构</h2><p class="muted">契约驱动、分层隔离、模型与数据库解耦</p></div><span class="tag ok">OpenAPI 唯一契约</span></div>
+        <div class="section-head"><div><h2><span class="section-no">04</span>总体架构</h2><p class="muted">契约驱动、分层隔离、模型与数据库解耦</p></div><span class="tag ok">OpenAPI 唯一契约</span></div>
         <div class="layer-diagram">
           <div class="layer"><div class="layer-name">交互层</div><div class="layer-body"><span class="pill">React SPA</span><span class="pill">Ant Design</span><span class="pill">ECharts</span><span class="pill">TanStack Query</span><span class="pill">REST + Fetch SSE</span></div></div>
           <div class="layer"><div class="layer-name">API / 用例层</div><div class="layer-body"><span class="pill">FastAPI Router</span><span class="pill">Pydantic Schema</span><span class="pill">QA Service</span><span class="pill">Config / Feedback / Log Service</span></div></div>
           <div class="layer"><div class="layer-name">Agent 与安全层</div><div class="layer-body"><span class="pill">LangGraph StateGraph</span><span class="pill">Hybrid RAG</span><span class="pill">Model Adapter</span><span class="pill">SQL AST Validator</span><span class="pill">Answer Verifier</span></div></div>
-          <div class="layer"><div class="layer-name">数据与运行层</div><div class="layer-body"><span class="pill">PostgreSQL app</span><span class="pill">PostgreSQL mart</span><span class="pill">pgvector</span><span class="pill">LangGraph Checkpoint</span><span class="pill">Nginx / Docker Compose</span></div></div>
+          <div class="layer"><div class="layer-name">数据与运行层</div><div class="layer-body"><span class="pill">PostgreSQL app</span><span class="pill">PostgreSQL mart</span><span class="pill">pgvector</span><span class="pill">LangGraph Checkpoint</span><span class="pill">Nginx（开发）</span><span class="pill">Caddy（生产）</span><span class="pill">Docker Compose</span></div></div>
         </div>
         <h3>一次问数的端到端链路</h3>
         <div class="flow">
@@ -264,7 +460,7 @@
       </section>
 
       <section id="frontend">
-        <div class="section-head"><div><h2><span class="section-no">04</span>前端完整设计</h2><p class="muted">面向问数流程的状态机、组件拆分与安全展示</p></div><span class="tag">React + TypeScript</span></div>
+        <div class="section-head"><div><h2><span class="section-no">05</span>前端完整设计</h2><p class="muted">面向问数流程的状态机、组件拆分与安全展示</p></div><span class="tag">React + TypeScript</span></div>
         <div class="grid g2">
           <div>
             <h3>路由与页面</h3>
@@ -310,7 +506,7 @@
       </section>
 
       <section id="backend">
-        <div class="section-head"><div><h2><span class="section-no">05</span>后端与 Agent 设计</h2><p class="muted">确定性工作流包围模型的不确定性</p></div><span class="tag">FastAPI + LangGraph</span></div>
+        <div class="section-head"><div><h2><span class="section-no">06</span>后端与 Agent 设计</h2><p class="muted">确定性工作流包围模型的不确定性</p></div><span class="tag">FastAPI + LangGraph</span></div>
         <div class="grid g2">
           <div class="card"><h3>分层职责</h3><ul><li><b>API：</b>校验、依赖注入、HTTP/SSE 映射</li><li><b>Service：</b>业务用例、事务边界和状态协调</li><li><b>Repository：</b>平台数据持久化，不做业务决策</li><li><b>Text2SQL：</b>检索、模型、验证、执行和答案核验</li><li><b>Core：</b>配置、日志、错误和密钥安全</li></ul></div>
           <div class="card"><h3>API 资源</h3><ul><li>数据源、会话、消息、执行与 SSE</li><li>澄清、取消、重发、再生成、版本与导出</li><li>常问、收藏、模型配置与连接测试</li><li>应用配置、反馈校对、问答日志</li><li>存活和就绪健康检查</li></ul><p><b>统一要求：</b>Request ID、稳定错误码、分页结构、幂等键和脱敏响应。</p></div>
@@ -328,23 +524,24 @@
           <div class="node"><b>verify / persist</b>核验与落库</div>
         </div>
         <div class="grid g3">
-          <div class="card"><h3>意图体系</h3><p><code>data_query</code>、<code>clarification</code>、<code>business_definition</code>、<code>product_help</code>、<code>chat</code>、<code>out_of_scope</code>、<code>unsafe</code>。</p><p>只有数据查询进入 RAG/SQL；闲聊与帮助不访问数据库。</p></div>
-          <div class="card"><h3>RAG 与上下文</h3><p>使用 BGE 中文 512 维 Embedding，pgvector cosine 与关键词融合。Schema、指标、Join 和 Few-shot 按不可信引用传入模型。</p></div>
-          <div class="card"><h3>预算与恢复</h3><p>显式 recursion limit、模型调用/HTTP attempt/总 deadline 预算；checkpoint、租约、心跳和 effect ledger 防止重复副作用。</p></div>
+          <div class="card"><h3>意图体系</h3><p><code>data_query</code>、<code>clarification</code>、<code>business_definition</code>、<code>product_help</code>、<code>chat</code>、<code>out_of_scope</code>、<code>unsafe</code>。</p><p>只有数据查询进入 RAG/SQL；“今年销售额怎么样”等缺少分析范围的问题由确定性规则兜底进入澄清。</p></div>
+          <div class="card"><h3>RAG 与上下文</h3><p>使用 BGE 中文 512 维 Embedding，pgvector cosine 与关键词融合。补充项目数量口径并支持未变化但被禁用文档的重新启用，扩展集 Top-5 召回达到 100/100。</p></div>
+          <div class="card"><h3>预算与恢复</h3><p>显式 recursion limit、模型调用/HTTP attempt/总 deadline 预算；checkpoint 连接具有有界超时，租约、心跳和 effect ledger 防止重复副作用。</p></div>
         </div>
         <h3>SQL 安全闸门</h3>
         <table><thead><tr><th>阶段</th><th>规则</th><th>失败处理</th></tr></thead><tbody>
           <tr><td>对象选择</td><td>数据源白名单 ∩ RAG 召回对象 ∩ 模型 selectedObjects</td><td>交集为空则拒绝</td></tr>
+          <tr><td>语义归一化</td><td>仅按白名单规则规范枚举后缀、月度分组和单数最高项</td><td>归一化后仍须通过完整 AST 校验</td></tr>
           <tr><td>AST 校验</td><td>仅单条 SELECT / 只读 CTE；校验 Schema、表、列、函数</td><td>安全拒绝，不纠错</td></tr>
           <tr><td>执行</td><td><code>text2sql_ro</code>、只读事务、超时、行数与响应体上限</td><td>分类错误并脱敏</td></tr>
           <tr><td>纠错</td><td>仅允许语法、列名和类型等可恢复 SQLSTATE，最多一次</td><td>纠错 SQL 重新完整验证</td></tr>
-          <tr><td>答案</td><td>数字必须来自问题、结果或 rowCount；图表字段必须存在</td><td>返回明确错误或程序化降级</td></tr>
+          <tr><td>答案</td><td>数字必须来自问题、结果或 rowCount；图表字段必须存在</td><td>结构或语义无效时最多重新生成一次，仍失败则返回明确错误或程序化降级</td></tr>
         </tbody></table>
         <p class="source">源码阅读入口：backend/README.md、backend/docs/requirements.md、text2sql-design.md、sql-security-policy.md、code-review-map.md。</p>
       </section>
 
       <section id="database">
-        <div class="section-head"><div><h2><span class="section-no">06</span>数据库完整设计</h2><p class="muted">业务查询面与平台写入面物理隔离</p></div><span class="tag ok">PostgreSQL 16 + pgvector</span></div>
+        <div class="section-head"><div><h2><span class="section-no">03</span>业务与数据设计</h2><p class="muted">业务数据、分析口径、平台状态与查询权限边界</p></div><span class="tag ok">PostgreSQL 16 + pgvector</span></div>
         <div class="grid g2">
           <div class="schema app"><h3><code>app</code> 平台 Schema</h3><p>应用配置、会话、消息、执行、步骤、事件、回答版本、反馈、模型配置、幂等记录、RAG 与 Seed 版本。由 <code>app_rw</code> 读写，禁止 Text2SQL 访问。</p></div>
           <div class="schema mart"><h3><code>mart</code> 经营 Schema</h3><p>组织、行业、产品、客户、合同、收入、回款、目标和项目风险。通过三个语义视图向 <code>text2sql_ro</code> 提供只读分析面。</p></div>
@@ -386,6 +583,17 @@
           <tr><td><code>v_target_achievement</code></td><td>经营单元年度目标及完成率</td><td>销售目标 + 收入聚合</td></tr>
           <tr><td><code>v_pipeline_risk</code></td><td>项目阶段与签约/交付/竞争/综合风险</td><td>项目管道 + 维度</td></tr>
         </tbody></table>
+        <h3>关键业务口径</h3>
+        <div class="grid g3">
+          <div class="card"><h4>合同额 ≠ 收入</h4><p>合同额来自合同主表；收入来自按日期发生的确认事实。签约不代表当期已确认收入。</p></div>
+          <div class="card"><h4>收入 ≠ 回款</h4><p>回款是独立现金事实；应收需按合同口径比较合同额、累计收入与累计回款，不能混用。</p></div>
+          <div class="card"><h4>注意视图粒度</h4><p><code>v_sales_performance</code> 是“合同 × 月”粒度；跨月汇总重复的合同额或累计值会造成重复计算。</p></div>
+        </div>
+        <h3>固定验收数据规模</h3>
+        <table><thead><tr><th>经营单元</th><th>行业</th><th>产品线</th><th>客户</th><th>合同</th><th>收入事实</th><th>回款事实</th><th>目标</th><th>商机</th></tr></thead><tbody>
+          <tr><td>21</td><td>8</td><td>3</td><td>60</td><td>600</td><td>1,800</td><td>1,200</td><td>42</td><td>180</td></tr>
+        </tbody></table>
+        <p class="muted">固定 Seed：<code>20260915</code>；经营数据截止日：<code>2026-05-31</code>。这些数据用于可重复验收，不代表生产容量上限。</p>
         <h3>一致性与安全设计</h3>
         <div class="grid g3">
           <div class="card"><h4>幂等</h4><p>幂等键绑定 operation、resource 和请求 SHA-256 指纹；占位与业务对象同事务写入。</p></div>
@@ -395,31 +603,69 @@
         <p class="source">源码阅读入口：backend/docs/data/database-design.md、data-dictionary.md、metric-definitions.md、schema-review-map.md、Alembic migrations。</p>
       </section>
 
+      <section id="code-map">
+        <div class="section-head"><div><h2><span class="section-no">07</span>核心实现导览</h2><p class="muted">从请求入口到可信回答的关键模块与职责</p></div><span class="tag ok">主链路可追溯</span></div>
+        <div class="grid g2">
+          <div>
+            <h3>后端核心模块</h3>
+            <div class="code-path">
+              <div class="code-path-item"><span><b><a class="file-link" href="../backend/app/main.py">main.py</a></b>应用入口</span><p>生命周期、路由、CORS、错误处理和启动恢复从这里装配。</p></div>
+              <div class="code-path-item"><span><b><a class="file-link" href="../backend/app/api/router.py">api/router.py</a></b>HTTP / SSE 边界</span><p>找到提交问题、执行详情、澄清、取消和事件流的接口入口。</p></div>
+              <div class="code-path-item"><span><b><a class="file-link" href="../backend/app/services/query_service.py">query_service.py</a></b>业务用例中枢</span><p>理解 execution 如何创建、领取、恢复、取消并安全进入终态。</p></div>
+              <div class="code-path-item"><span><b><a class="file-link" href="../backend/app/text2sql/agent.py">text2sql/agent.py</a></b>LangGraph 状态图</span><p>重点看节点、条件路由、澄清分支、递归与调用预算。</p></div>
+              <div class="code-path-item"><span><b><a class="file-link" href="../backend/app/text2sql/rag.py">rag.py</a> → <a class="file-link" href="../backend/app/text2sql/validator.py">validator.py</a> → <a class="file-link" href="../backend/app/text2sql/executor.py">executor.py</a></b>安全查询链</span><p>确认召回范围、AST 验证和只读执行三道边界不能被绕过。</p></div>
+              <div class="code-path-item"><span><b><a class="file-link" href="../backend/app/text2sql/answer.py">answer.py</a></b>答案核验</span><p>理解模型答案如何被结果字段、数字来源和图表结构再次约束。</p></div>
+            </div>
+          </div>
+          <div>
+            <h3>前端核心模块</h3>
+            <div class="code-path">
+              <div class="code-path-item"><span><b><a class="file-link" href="../frontend/src/App.tsx">App.tsx</a></b>路由入口</span><p>建立页面、懒加载和主框架的全局视图。</p></div>
+              <div class="code-path-item"><span><b><a class="file-link" href="../frontend/src/api/client.ts">api/client.ts</a></b>统一 API Client</span><p>查看 OpenAPI 类型、Request ID、错误映射和请求边界。</p></div>
+              <div class="code-path-item"><span><b><a class="file-link" href="../frontend/src/features/qa/workspace/useQuestionWorkspace.ts">useQuestionWorkspace.ts</a></b>问答状态中枢</span><p>理解提交、恢复、澄清、取消、版本以及缓存失效。</p></div>
+              <div class="code-path-item"><span><b><a class="file-link" href="../frontend/src/features/qa/answer/executionEventStream.ts">executionEventStream.ts</a></b>SSE 状态机</span><p>关注事件去重、Last-Event-ID、重连和轮询降级。</p></div>
+              <div class="code-path-item"><span><b><a class="file-link" href="../frontend/src/features/qa/answer/AssistantMessage.tsx">AssistantMessage.tsx</a></b>回答编排</span><p>查看执行步骤、澄清、表格、图表、结论和动作如何按状态出现。</p></div>
+              <div class="code-path-item"><span><b><a class="file-link" href="../frontend/src/features/qa/answer/ResultTable.tsx">ResultTable.tsx</a> / <a class="file-link" href="../frontend/src/features/qa/answer/ResultChart.tsx">ResultChart.tsx</a></b>结果呈现</span><p>确认字段翻译、宽表降级、图表配置和导出行为。</p></div>
+            </div>
+          </div>
+        </div>
+        <h3>六项关键设计说明</h3>
+        <div class="grid g3">
+          <div class="card"><h4>1. 契约统一</h4><p>以 <a class="file-link" href="../backend/docs/api/openapi.yaml">OpenAPI</a> 为唯一接口事实来源，前端类型自动生成。</p></div>
+          <div class="card"><h4>2. 模型边界</h4><p>模型负责意图判断、候选 SQL 与总结建议，不直接访问或修改数据库。</p></div>
+          <div class="card"><h4>3. SQL 受控</h4><p>对象三方交集、AST 白名单、只读账号、超时和结果上限共同约束。</p></div>
+          <div class="card"><h4>4. 执行可恢复</h4><p>execution、checkpoint、lease、effect ledger 与持久事件共同提供恢复能力。</p></div>
+          <div class="card"><h4>5. 请求幂等</h4><p>幂等键绑定 operation、resource 与 body fingerprint，终态更新使用 CAS。</p></div>
+          <div class="card"><h4>6. 答案可核验</h4><p>模型输出继续经过数字、字段、rowCount 和图表引用校验。</p></div>
+        </div>
+        <p class="source">完整逐文件说明：<a href="../frontend/docs/code-review-map.md">前端 Code Review Map</a>、<a href="../backend/docs/code-review-map.md">后端 Code Review Map</a>、<a href="../backend/docs/data/schema-review-map.md">数据库 Schema Review Map</a>。</p>
+      </section>
+
       <section id="review">
-        <div class="section-head"><div><h2><span class="section-no">07</span>Code Review 细节</h2><p class="muted">安全边界、质量结论、风险与建议阅读顺序</p></div><span class="tag warn">2 个发布前环境项</span></div>
+        <div class="section-head"><div><h2><span class="section-no">09</span>Code Review 细节</h2><p class="muted">安全边界、质量结论、风险与建议阅读顺序</p></div><span class="tag ok">未关闭 S0 / S1 / S2 = 0</span></div>
         <h3>Review 结论</h3>
-        <p>现有 Review 报告未发现会导致危险 SQL 执行、密钥泄露、前端脚本注入或问答主流程不可用的 S0/S1/S2 代码缺陷。LLM、SQL、数据库和 UI 之间的信任边界清晰，关键状态可追溯。</p>
+        <p>当前没有未关闭的 S0/S1/S2 代码缺陷。本轮真实模型专项发现的 BE-004～BE-011 已完成修复与针对性复验；LLM、SQL、数据库和 UI 之间的信任边界保持清晰，关键状态可追溯。</p>
         <div class="grid g3">
           <div class="card"><h4>密钥安全</h4><p>API Key 仅通过运行时 Secret 或后端加密存储；前端、响应和普通日志不保存明文。</p></div>
           <div class="card"><h4>Prompt 安全</h4><p>当前问题、历史、RAG、候选 SQL、错误和结果均进入不可信数据面，不能覆盖 system 规则。</p></div>
           <div class="card"><h4>前端安全</h4><p>无未经清洗 HTML；Markdown、图表、语音、日志和澄清均按安全文本或结构化数据处理。</p></div>
         </div>
-        <h3>Findings</h3>
-        <div class="finding"><b>P1 · 容器运行时尚待实机闭环</b><p>Docker Desktop 与 CLI 已安装、Compose 静态配置通过；Windows 重启后仍需完成 Engine、镜像构建、健康检查、空卷迁移/Seed/RAG 和 Nginx SSE 的完整验证。</p></div>
-        <div class="finding"><b>P1 · 迁移管理员连接需独立配置</b><p>发布环境应通过 Secret 注入 <code>MIGRATION_DATABASE_URL</code>，不能提升应用账号权限，也不能把管理员连接写入仓库。</p></div>
+        <h3>剩余风险</h3>
+        <div class="finding"><b>P1 · 干净 Linux 生产机仍需最终验收</b><p>Windows Docker Desktop 的开发全栈已从空环境跑通；生产编排的 Secret、数据库角色、迁移和后端镜像也已验证。正式发布前仍需在目标 Linux 主机验证域名、Caddy 自动 HTTPS 和长连接。</p></div>
+        <div class="finding p2"><b>P2 · Caddy 镜像运行验证受网络影响</b><p>生产 Compose 和 Caddy 配置已静态校验；本机拉取 Caddy 镜像时 Docker Hub 匿名令牌请求两次 EOF，因此本轮未完成 Caddy 容器运行验证。</p></div>
         <div class="finding p2"><b>P2 · 前端生产分包仍有体积提示</b><p>ECharts 与主入口存在超过 500KB 的 chunk；当前功能不受影响，后续应依据首屏指标继续拆分。</p></div>
         <div class="finding p2"><b>P2 · npm 审计镜像差异</b><p>默认镜像缺少 audit endpoint；使用官方 npm registry 的生产依赖扫描结果无已知漏洞。</p></div>
         <h3>推荐 Review 路线</h3>
-        <ol><li>OpenAPI 与 API → Service → Repository/Text2SQL 分层。</li><li>意图分类、主动澄清、RAG 对象交集和 SQL Validator。</li><li>幂等指纹、租约、终态 CAS、effect ledger、SSE 重放。</li><li>模型报告、RAG/Prompt 安全评测和自动化质量门禁。</li><li>明确区分“静态配置通过”和“目标环境部署通过”。</li></ol>
+        <ol><li>从端到端请求主链路确认各层职责与调用边界。</li><li>核对 OpenAPI 与 API → Service → Repository/Text2SQL 分层。</li><li>检查意图分类、主动澄清、RAG 对象交集和 SQL Validator。</li><li>检查幂等指纹、租约、终态 CAS、effect ledger、SSE 重放。</li><li>用模型报告、RAG/Prompt 安全评测和自动化质量门禁验证结论。</li><li>明确区分“本机容器通过”和“目标 Linux 生产发布通过”。</li></ol>
       </section>
 
       <section id="tests">
-        <div class="section-head"><div><h2><span class="section-no">08</span>完整测试报告</h2><p class="muted">本节整理现有 Code Review 测试文档，不代替 test 对话的最终报告</p></div><span class="tag ok">已有证据可追溯</span></div>
+        <div class="section-head"><div><h2><span class="section-no">08</span>完整测试报告</h2><p class="muted">汇总最终测试报告与后续容器实机验收</p></div><span class="tag ok">Go，建议发布</span></div>
         <div class="grid g4">
-          <div class="card"><strong class="big">63 / 63</strong><span>前端单元与组件测试</span></div>
-          <div class="card"><strong class="big">10 / 10</strong><span>Chromium E2E 场景</span></div>
-          <div class="card"><strong class="big">169</strong><span>后端默认测试通过</span></div>
-          <div class="card"><strong class="big">30 / 30</strong><span>RAG Top-5 命中</span></div>
+          <div class="card"><strong class="big">64 / 64</strong><span>前端单元与组件测试</span></div>
+          <div class="card"><strong class="big">11 / 11</strong><span>Chromium E2E 场景</span></div>
+          <div class="card"><strong class="big">239 / 239</strong><span>后端完整测试通过</span></div>
+          <div class="card"><strong class="big">100 / 100</strong><span>扩展 RAG Top-5 命中</span></div>
         </div>
         <h3>真实模型核心评测</h3>
         <table><thead><tr><th>#</th><th>问题</th><th>行数</th><th>图表</th><th>结果</th></tr></thead><tbody>
@@ -431,6 +677,14 @@
           <tr><td>6</td><td>2026年1到5月收入同比2025年变化多少</td><td>2</td><td>柱状图</td><td><span class="tag ok">通过</span></td></tr>
           <tr><td>7</td><td>目前有多少高风险项目</td><td>1</td><td>指标卡</td><td><span class="tag ok">通过</span></td></tr>
           <tr><td>8</td><td>应收金额最高的10个合同</td><td>10</td><td>柱状图</td><td><span class="tag ok">通过</span></td></tr>
+        </tbody></table>
+        <h3>真实模型扩展评测与修复回归</h3>
+        <table><thead><tr><th>验证项</th><th>结果</th><th>说明</th></tr></thead><tbody>
+          <tr><td>100 题 × 3 轮</td><td>279/300，93.0%</td><td>85/100 用例三轮全过；95% Wilson 区间 89.5%～95.4%</td></tr>
+          <tr><td>危险请求</td><td>36/36</td><td>全部阻断，未进入 SQL 执行</td></tr>
+          <tr><td>失败题修复复验</td><td>45/45</td><td>初测 15 个失败题逐题重跑三次，按每题最终版本合并</td></tr>
+          <tr><td>关闭缺陷</td><td>BE-004～BE-011</td><td>覆盖实体归一化、月度表达式、项目口径、澄清、Top1、结构化响应、checkpoint 超时和 RAG 重启用</td></tr>
+          <tr><td>可审计资源</td><td>1,445,326 Tokens</td><td>含主评测与修复复验；密钥不进入报告</td></tr>
         </tbody></table>
         <h3>危险请求验证</h3>
         <table><thead><tr><th>风险</th><th>样例</th><th>行为</th></tr></thead><tbody>
@@ -453,30 +707,56 @@
         <h3>测试证据与限制</h3>
         <div class="status-list">
           <div class="status-row"><span class="dot"></span><b>真实 DeepSeek</b><span>8/8 核心问数、5/5 危险请求；报告不含密钥</span><span class="tag ok">通过</span></div>
-          <div class="status-row"><span class="dot"></span><b>RAG</b><span>30/30 命中，Recall@5=1.0，MRR=0.7539</span><span class="tag ok">通过</span></div>
+          <div class="status-row"><span class="dot"></span><b>RAG</b><span>基础集 30/30；扩展集 100/100，Recall@5=1.0、MRR=0.589、nDCG@5=0.691</span><span class="tag ok">通过</span></div>
           <div class="status-row"><span class="dot"></span><b>Prompt 安全</b><span>16/16 攻击用例、30/30 回归用例，0 次模型调用</span><span class="tag ok">通过</span></div>
-          <div class="status-row"><span class="dot warn"></span><b>PostgreSQL 条件集成测试</b><span>现有报告记录 27 项因未注入隔离测试库连接而跳过</span><span class="tag warn">待 test 对话更新</span></div>
-          <div class="status-row"><span class="dot warn"></span><b>Docker 全栈</b><span>静态配置通过；Engine 与空卷启动需重启后验证</span><span class="tag warn">待验证</span></div>
+          <div class="status-row"><span class="dot"></span><b>PostgreSQL 完整测试</b><span>239/239，0 失败；BE-010 修复后原失败集成用例 5.2 秒通过</span><span class="tag ok">通过</span></div>
+          <div class="status-row"><span class="dot"></span><b>覆盖率门禁</b><span>overall 86.10%、services 85.43%、SQL validator 100%</span><span class="tag ok">通过</span></div>
+          <div class="status-row"><span class="dot"></span><b>Docker 开发全栈</b><span>镜像、空卷 PostgreSQL、迁移、Seed、RAG、API、Nginx 均通过</span><span class="tag ok">通过</span></div>
+          <div class="status-row"><span class="dot"></span><b>100 题 × 3 轮扩展评测</b><span>初测校准后 279/300、准确率 93%；失败题修复后针对性复验 45/45，不替代 8 条核心门禁</span><span class="tag ok">专项通过</span></div>
+          <div class="status-row"><span class="dot warn"></span><b>生产目标机</b><span>需在干净 Linux 主机补跑 Caddy HTTPS 与长连接专项</span><span class="tag warn">发布前动作</span></div>
         </div>
-        <p class="source">证据来源：docs/03-review/code-review-report.md、backend/.runtime/real-model-smoke-20260918-final.json、rag-evaluation、prompt-injection 报告。最终数字以 test 对话更新后的测试报告为准。</p>
+        <p class="source">证据来源：<a href="../test/FULL-TEST-REPORT-2026-09-20.md">完整测试报告</a>、<a href="../test/REAL-MODEL-ACCURACY-REPORT-2026-09-21.md">真实模型准确率专项报告</a>、<a href="03-review/code-review-report.md">Code Review 报告</a>、真实模型/RAG/Prompt 安全脱敏报告及 <a href="00-shared/deployment-design.md">部署设计</a>。</p>
       </section>
 
       <section id="delivery">
-        <div class="section-head"><div><h2><span class="section-no">09</span>交付与发布状态</h2><p class="muted">完成项、待验证项和上线前动作</p></div></div>
+        <div class="section-head"><div><h2><span class="section-no">10</span>交付与发布状态</h2><p class="muted">完成项、运行矩阵和上线前动作</p></div><span class="tag ok">本机全栈已运行</span></div>
         <div class="status-list">
           <div class="status-row"><span class="dot"></span><b>产品主链路</b><span>问数、澄清、表格、图表、回答、日志、反馈与配置</span><span class="tag ok">完成</span></div>
           <div class="status-row"><span class="dot"></span><b>Agent 工程</b><span>LangGraph、真实模型、RAG、SQL 安全、checkpoint、幂等和恢复</span><span class="tag ok">完成</span></div>
           <div class="status-row"><span class="dot"></span><b>安全基线</b><span>密钥、Prompt、SQL、权限、错误脱敏和前端渲染边界</span><span class="tag ok">完成</span></div>
-          <div class="status-row"><span class="dot warn"></span><b>Docker Engine</b><span>Docker Desktop 已安装；Windows 重启后执行全栈构建与健康检查</span><span class="tag warn">待重启验证</span></div>
-          <div class="status-row"><span class="dot warn"></span><b>迁移凭据</b><span>目标环境注入独立 MIGRATION_DATABASE_URL</span><span class="tag warn">发布动作</span></div>
+          <div class="status-row"><span class="dot"></span><b>开发 Compose</b><span>postgres → migrate → seed → rag-index → backend → frontend 完整通过</span><span class="tag ok">完成</span></div>
+          <div class="status-row"><span class="dot"></span><b>生产安全编排</b><span>独立数据库角色、Docker Secret、资源/日志限制和 Caddy 入口已配置</span><span class="tag ok">完成</span></div>
+          <div class="status-row"><span class="dot warn"></span><b>生产目标机</b><span>注入真实 Secret，完成 DNS、80/443、Caddy HTTPS、备份与监控验收</span><span class="tag warn">上线动作</span></div>
         </div>
-        <div class="callout"><strong>汇报建议：</strong>先用第 3 节说明架构边界，再用第 5 节解释 Agent 如何受控，随后展示第 6 节的数据隔离，最后用第 7～9 节回答“代码是否可信、测试是否充分、还缺什么”。</div>
+        <h3>部署环境怎么选</h3>
+        <table><thead><tr><th>场景</th><th>入口</th><th>数据初始化</th><th>边界</th></tr></thead><tbody>
+          <tr><td>本地开发</td><td><code>docker-compose.yml</code> / 8080</td><td>迁移 + 固定 Seed + RAG</td><td>Nginx 统一代理，适合开发与验收</td></tr>
+          <tr><td>生产发布</td><td><code>docker-compose.prod.yml</code> / 80、443</td><td>默认迁移 + RAG，不写演示业务数据</td><td>Caddy HTTPS、Secret、数据库不暴露宿主端口</td></tr>
+        </tbody></table>
+        <div class="decision"><strong>当前判断：代码与本机已测范围达到 Go。</strong> 真正上线仍需在目标 Linux 主机完成一次从零部署、HTTPS/SSE、备份恢复和监控告警验收；这属于发布动作，不应被描述为代码缺陷。</div>
+        <div class="callout"><strong>汇报建议：</strong>按第 1～4 节依次说明产品定位、需求、业务数据和总体架构；第 5～7 节展开前端、Agent 与核心实现；第 8～10 节用测试、Review 和交付状态回答“系统是否可信、是否具备发布条件”；需要追溯完整材料时进入第 11 节文档附录。</div>
       </section>
     </div>
-    <footer>经管之星 · 项目全景与 Code Review · 生成日期 2026-09-20</footer>
+    <footer>经管之星 · 项目全景与 Code Review · 内容校准日期 2026-09-21</footer>
   </main>
 </div>
+<button class="back-top" type="button" aria-label="返回顶部" title="返回顶部">↑</button>
+<div class="preview-overlay" role="dialog" aria-modal="true" aria-labelledby="preview-title" aria-hidden="true">
+  <div class="preview-panel">
+    <div class="preview-head">
+      <div class="preview-title"><b id="preview-title">文档预览</b><span class="preview-path"></span></div>
+      <div class="preview-actions"><a class="preview-source" href="#" target="_blank" rel="noopener" data-raw>打开源文件</a><button class="preview-close" type="button" aria-label="关闭预览" title="关闭">×</button></div>
+    </div>
+    <div class="preview-content"><div class="preview-loading">正在加载文档…</div></div>
+  </div>
+</div>
 <script>
+  const sectionOrder = ['overview', 'requirements', 'database', 'architecture', 'frontend', 'backend', 'code-map', 'tests', 'review', 'delivery', 'documents'];
+  const contentRoot = document.querySelector('.content');
+  sectionOrder.forEach(id => {
+    const section = document.getElementById(id);
+    if (section) contentRoot.appendChild(section);
+  });
   const links = [...document.querySelectorAll('nav a')];
   const sections = links.map(link => document.querySelector(link.getAttribute('href'))).filter(Boolean);
   const observer = new IntersectionObserver(entries => {
@@ -485,6 +765,131 @@
     links.forEach(link => link.classList.toggle('active', link.getAttribute('href') === `#${visible.target.id}`));
   }, { rootMargin: '-15% 0px -70% 0px', threshold: [0, .1, .4] });
   sections.forEach(section => observer.observe(section));
+  const progress = document.querySelector('.reading-progress span');
+  const backTop = document.querySelector('.back-top');
+  const updateScrollUi = () => {
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    progress.style.width = `${max > 0 ? Math.min(100, window.scrollY / max * 100) : 0}%`;
+    backTop.classList.toggle('visible', window.scrollY > 640);
+  };
+  window.addEventListener('scroll', updateScrollUi, { passive: true });
+  backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  updateScrollUi();
+
+  const previewOverlay = document.querySelector('.preview-overlay');
+  const previewContent = document.querySelector('.preview-content');
+  const previewTitle = document.querySelector('#preview-title');
+  const previewPath = document.querySelector('.preview-path');
+  const previewSource = document.querySelector('.preview-source');
+  const previewClose = document.querySelector('.preview-close');
+  const escapeHtml = value => String(value)
+    .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
+  const safeUrl = (target, base) => {
+    try {
+      const url = new URL(target, base);
+      return ['http:', 'https:'].includes(url.protocol) ? url.href : '#';
+    } catch { return '#'; }
+  };
+  const renderInline = (value, base) => {
+    let html = escapeHtml(value);
+    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => `<img src="${escapeHtml(safeUrl(src, base))}" alt="${alt}" />`);
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) => `<a href="${escapeHtml(safeUrl(href, base))}">${label}</a>`);
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+    return html.replaceAll('&lt;br&gt;', '<br>').replaceAll('&lt;br/&gt;', '<br>').replaceAll('&lt;br /&gt;', '<br>');
+  };
+  const splitTableRow = line => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim());
+  const renderMarkdown = (markdown, sourceUrl) => {
+    const lines = markdown.replaceAll('\r\n', '\n').split('\n');
+    const out = [];
+    let code = false;
+    let codeLines = [];
+    let list = null;
+    const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (/^```/.test(line.trim())) {
+        closeList();
+        if (code) { out.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`); codeLines = []; code = false; }
+        else { code = true; }
+        continue;
+      }
+      if (code) { codeLines.push(line); continue; }
+      if (!line.trim()) { closeList(); continue; }
+      const heading = line.match(/^(#{1,4})\s+(.+)$/);
+      if (heading) { closeList(); const level = heading[1].length; out.push(`<h${level}>${renderInline(heading[2], sourceUrl)}</h${level}>`); continue; }
+      if (line.includes('|') && i + 1 < lines.length && /^\s*\|?\s*:?-{3,}/.test(lines[i + 1])) {
+        closeList();
+        const headers = splitTableRow(line);
+        i += 2;
+        const rows = [];
+        while (i < lines.length && lines[i].includes('|') && lines[i].trim()) { rows.push(splitTableRow(lines[i])); i += 1; }
+        i -= 1;
+        out.push(`<table><thead><tr>${headers.map(cell => `<th>${renderInline(cell, sourceUrl)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${renderInline(cell, sourceUrl)}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
+        continue;
+      }
+      const ul = line.match(/^\s*[-*+]\s+(.+)$/);
+      const ol = line.match(/^\s*\d+[.)]\s+(.+)$/);
+      if (ul || ol) {
+        const kind = ul ? 'ul' : 'ol';
+        if (list !== kind) { closeList(); list = kind; out.push(`<${kind}>`); }
+        out.push(`<li>${renderInline((ul || ol)[1], sourceUrl)}</li>`);
+        continue;
+      }
+      closeList();
+      if (/^>\s?/.test(line)) { out.push(`<blockquote>${renderInline(line.replace(/^>\s?/, ''), sourceUrl)}</blockquote>`); continue; }
+      if (/^\s*([-*_])\1\1+\s*$/.test(line)) { out.push('<hr>'); continue; }
+      out.push(`<p>${renderInline(line, sourceUrl)}</p>`);
+    }
+    closeList();
+    if (codeLines.length) out.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
+    return out.join('');
+  };
+  const closePreview = () => {
+    previewOverlay.classList.remove('open');
+    previewOverlay.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('preview-open');
+  };
+  const openPreview = async (anchor) => {
+    const sourceUrl = new URL(anchor.getAttribute('href'), window.location.href).href;
+    const pathname = new URL(sourceUrl).pathname;
+    previewTitle.textContent = anchor.querySelector('b')?.textContent?.trim() || anchor.textContent.trim() || '文档预览';
+    previewPath.textContent = decodeURIComponent(pathname);
+    previewSource.href = sourceUrl;
+    previewContent.innerHTML = '<div class="preview-loading">正在加载文档…</div>';
+    previewOverlay.classList.add('open');
+    previewOverlay.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('preview-open');
+    previewClose.focus();
+    try {
+      const response = await fetch(sourceUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      if (/\.md$/i.test(pathname)) previewContent.innerHTML = renderMarkdown(text, sourceUrl);
+      else if (/\.json$/i.test(pathname)) {
+        let formatted = text;
+        try { formatted = JSON.stringify(JSON.parse(text), null, 2); } catch { /* 保留原始脱敏证据 */ }
+        previewContent.innerHTML = `<pre><code>${escapeHtml(formatted)}</code></pre>`;
+      } else previewContent.innerHTML = `<pre><code>${escapeHtml(text)}</code></pre>`;
+      previewContent.scrollTop = 0;
+    } catch (error) {
+      previewContent.innerHTML = `<div class="preview-error"><strong>预览加载失败</strong><p>${escapeHtml(error.message || '无法读取该文件，请确认通过本地 HTTP 服务打开本页。')}</p></div>`;
+    }
+  };
+  document.addEventListener('click', event => {
+    const anchor = event.target.closest('a[href]');
+    if (!anchor || anchor.hasAttribute('data-raw')) return;
+    let pathname;
+    try { pathname = new URL(anchor.href, window.location.href).pathname; } catch { return; }
+    if (!/\.(md|json|ya?ml|txt)$/i.test(pathname)) return;
+    event.preventDefault();
+    openPreview(anchor);
+  });
+  previewClose.addEventListener('click', closePreview);
+  previewOverlay.addEventListener('click', event => { if (event.target === previewOverlay) closePreview(); });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape' && previewOverlay.classList.contains('open')) closePreview(); });
 </script>
 </body>
 </html>
